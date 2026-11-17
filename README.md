@@ -203,4 +203,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **Repository**: https://github.com/Joosibaeri/burnyourmoneywithslop
 - **Supabase Setup**: [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md)
 - **Custom Domain**: [docs/CUSTOM_DOMAIN.md](docs/CUSTOM_DOMAIN.md)
-- **Plugin Install**: [docs/PLUGIN_INSTALL.md](docs/PLUGIN_INSTALL.md)
+- **Plugin Install**: [docs/PLUGIN_INSTALL.md](docs/PLUGIN_INSTALL.md) 
