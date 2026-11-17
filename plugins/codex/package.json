@@ -1,0 +1,21 @@
+{
+  "name": "@burnyourmoneywithslop/codex-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Burn Your Money With Slop - Codex plugin for usage tracking via PostModelRequest hook",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.0",
+    "@types/node": "^26.0.0"
+  },
+  "keywords": ["codex", "plugin", "usage", "tracking", "ai"],
+  "author": "Joosibaeri",
+  "license": "MIT"
+}

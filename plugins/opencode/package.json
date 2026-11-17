@@ -1,0 +1,23 @@
+{
+  "name": "@burnyourmoneywithslop/opencode-plugin",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Burn Your Money With Slop - OpenCode plugin for usage tracking",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@opencode/plugin": "^2.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.0"
+  },
+  "keywords": ["opencode", "plugin", "usage", "tracking", "ai"],
+  "author": "Joosibaeri",
+  "license": "MIT"
+}

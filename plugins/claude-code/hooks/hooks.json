@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/dist/stop-hook.js"],
+            "timeout": 10,
+            "statusMessage": "Sending usage to Burn Your Money With Slop"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/dist/session-end-hook.js"],
+            "timeout": 3,
+            "statusMessage": "Finalizing usage tracking"
+          }
+        ]
+      }
+    ]
+  }
+}

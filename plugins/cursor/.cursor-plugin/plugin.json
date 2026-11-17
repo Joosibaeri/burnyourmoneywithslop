@@ -1,0 +1,26 @@
+{
+  "name": "burnyourmoneywithslop",
+  "version": "0.1.0",
+  "description": "Burn Your Money With Slop - Cursor plugin for usage tracking via sessionEnd hook",
+  "author": {
+    "name": "Joosibaeri"
+  },
+  "license": "MIT",
+  "hooks": "./hooks/hooks.json",
+  "variables": {
+    "type": "object",
+    "properties": {
+      "SUPABASE_URL": {
+        "type": "string",
+        "title": "Supabase URL",
+        "description": "Your Supabase project URL"
+      },
+      "SUPABASE_ANON_KEY": {
+        "type": "string",
+        "title": "Supabase Anon Key",
+        "description": "Your Supabase publishable/anon key"
+      }
+    },
+    "required": ["SUPABASE_URL", "SUPABASE_ANON_KEY"]
+  }
+}
