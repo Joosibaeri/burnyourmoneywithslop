@@ -30,5 +30,11 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
     },
+  }, {
+    files: ['src/contexts/*.tsx'],
+    rules: {
+      // Context providers deliberately export their matching consumer hooks.
+      'react-refresh/only-export-components': ['warn', { allowConstantExport: true, allowExportNames: ['useAuth', 'useSupabase'] }],
+    },
   }
 )

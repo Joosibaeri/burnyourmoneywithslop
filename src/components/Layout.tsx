@@ -1,13 +1,20 @@
-import { NavLink } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { Menu, X, LogOut, Users, Settings, Home, GitBranch, LogIn } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { ReactNode } from 'react'
+import { githubLogin } from '@/lib/data'
 
 export function Layout({ children }: { children?: ReactNode }) {
-  const { user, signOut, signInWithGithub, loading } = useAuth()
+  const { user, signOut, loading } = useAuth()
+  const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const login = githubLogin(user)
+  const handleSignOut = async () => {
+    try { await signOut() } catch { setError('Could not sign out. Please try again.') }
+  }
 
   // Different nav items for authenticated vs public
   const authNavItems = [
@@ -96,15 +103,15 @@ export function Layout({ children }: { children?: ReactNode }) {
                 borderRadius: 'var(--radius-sm)',
               }}>
                 <img
-                  src={user.user_metadata?.avatar_url || `https://github.com/${user.user_metadata?.login || 'user'}.png`}
+                  src={user.user_metadata?.avatar_url || `https://github.com/${login || 'user'}.png`}
                   alt=""
                   style={{ width: 28, height: 28, borderRadius: '50%' }}
                 />
                 <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
-                  @{user.user_metadata?.login || user.email?.split('@')[0] || 'user'}
+                  @{login || 'user'}
                 </span>
                 <button
-                  onClick={signOut}
+                  onClick={handleSignOut}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -120,9 +127,9 @@ export function Layout({ children }: { children?: ReactNode }) {
                 </button>
               </div>
             ) : (
-              <Button onClick={signInWithGithub} loading={loading}>
-                <LogIn size={18} /> Sign In
-              </Button>
+              <Link to="/login" state={{ returnTo: location.pathname + location.search }}>
+                <Button disabled={loading}><LogIn size={18} /> Sign In</Button>
+              </Link>
             )}
 
             <button
@@ -181,6 +188,7 @@ export function Layout({ children }: { children?: ReactNode }) {
 
       <main style={{ flex: 1, padding: '32px 0' }}>
         <div className="container">
+          {error && <p role="alert" style={{ color: 'var(--danger)' }}>{error}</p>}
           {children}
         </div>
       </main>

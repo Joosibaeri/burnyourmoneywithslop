@@ -3,18 +3,13 @@
   "version": "0.1.0",
   "type": "module",
   "description": "Burn Your Money With Slop - Claude Code plugin for usage tracking",
-  "main": "./dist/index.js",
+  "private": true,
+  "main": "./dist/stop-hook.js",
   "scripts": {
-    "build": "tsc && mkdir -p dist && cp src/*.js dist/ 2>/dev/null || true",
-    "dev": "tsc --watch"
+    "build": "node ../build.mjs claude-code",
+    "typecheck": "tsc --noEmit -p ../tsconfig.json"
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.119.0"
-  },
-  "devDependencies": {
-    "typescript": "^7.0.0",
-    "@types/node": "^26.0.0"
-  },
+  "engines": { "node": ">=22" },
   "keywords": ["claude-code", "plugin", "usage", "tracking", "ai"],
   "author": "Joosibaeri",
   "license": "MIT"

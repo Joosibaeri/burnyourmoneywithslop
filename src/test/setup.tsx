@@ -1,5 +1,7 @@
-import '@testing-library/jest-dom'
+import '@testing-library/jest-dom/vitest'
 import { vi } from 'vitest'
+import type { PropsWithChildren } from 'react'
+import type { LinkProps } from 'react-router-dom'
 
 // Mock environment variables
 Object.defineProperty(import.meta, 'env', {
@@ -42,11 +44,11 @@ vi.mock('react-router-dom', async () => {
     useNavigate: () => vi.fn(),
     useLocation: () => ({ pathname: '/' }),
     useParams: () => ({}),
-    Link: ({ children, ...props }: any) => <a {...props}>{children}</a>,
-    NavLink: ({ children, ...props }: any) => <a {...props}>{children}</a>,
+    Link: ({ children, to, ...props }: LinkProps) => <a href={typeof to === 'string' ? to : to.pathname} {...props}>{children}</a>,
+    NavLink: ({ children, to, ...props }: LinkProps) => <a href={typeof to === 'string' ? to : to.pathname} {...props}>{children}</a>,
     Outlet: () => <div data-testid="outlet" />,
-    Routes: ({ children }: any) => <>{children}</>,
-    Route: ({ children }: any) => <>{children}</>,
+    Routes: ({ children }: PropsWithChildren) => <>{children}</>,
+    Route: ({ children }: PropsWithChildren) => <>{children}</>,
   }
 })
 

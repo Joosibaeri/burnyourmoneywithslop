@@ -1,0 +1,6 @@
+{
+  "name": "burnyourmoneywithslop",
+  "version": "0.1.0",
+  "description": "Metrics-only collection with paired synchronous model-request hooks",
+  "hooks": "./hooks/hooks.json"
+}

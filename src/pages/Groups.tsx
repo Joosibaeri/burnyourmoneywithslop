@@ -1,47 +1,64 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { useSupabase } from '@/contexts/SupabaseContext'
+import { useGroups } from '@/hooks/useGroups'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
-import { Plus, Lock, ArrowRight, TrendingUp } from 'lucide-react'
+import { Plus, Lock, ArrowRight, TrendingUp, UserPlus } from 'lucide-react'
 import { useState } from 'react'
-import { getMockGroups, formatNumber, formatCurrency } from '@/lib/utils'
+import { formatNumber, formatCurrencyPrecise as formatCurrency } from '@/lib/utils'
+import { getDemoGroups, setDemoGroups, githubLogin, inviteCodeFromInput } from '@/lib/data'
 
 export function Groups() {
   const navigate = useNavigate()
   const { user } = useAuth()
-  const [groups] = useState(getMockGroups())
-  const [showCreateModal, setShowCreateModal] = useState(false)
+  const { supabase, isDemoMode } = useSupabase()
+  const { groups, loading, error, reload } = useGroups()
+  const [params] = useSearchParams()
+  const [showCreateModal, setShowCreateModal] = useState(params.get('create') === '1')
+  const [showJoinModal, setShowJoinModal] = useState(false)
+  const [inviteInput, setInviteInput] = useState('')
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
   const [newGroupName, setNewGroupName] = useState('')
   const [newGroupDesc, setNewGroupDesc] = useState('')
 
-  const handleCreateGroup = (e: React.FormEvent) => {
+  const handleCreateGroup = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newGroupName.trim()) return
-    const newGroup = {
-      id: Date.now().toString(),
-      name: newGroupName,
-      description: newGroupDesc,
-      memberCount: 1,
-      totalSpent: 0,
-      totalTokens: 0,
-      yourRank: 1,
-      members: [{
-        id: user?.id || '1',
-        name: user?.user_metadata?.login || 'you',
-        login: user?.user_metadata?.login || 'you',
-        avatar: '',
-        spent: 0,
-        tokens: 0,
-        tools: [],
-      }],
+    if (!newGroupName.trim() || !user) return
+    setCreating(true)
+    setActionError(null)
+    try {
+      let groupId: string
+      if (isDemoMode) {
+        groupId = `demo-${Date.now()}`
+        setDemoGroups([{
+          id: groupId, name: newGroupName.trim(), description: newGroupDesc.trim(), ownerId: user.id,
+          inviteCode: `demo-invite-${groupId}`, memberCount: 1, totalSpent: 0, totalTokens: 0, yourRank: 1,
+          members: [{ id: user.id, name: 'You', login: githubLogin(user), avatar: '', spent: 0, tokens: 0, tools: [] }],
+        }, ...getDemoGroups()])
+      } else {
+        const { data, error: createError } = await supabase.from('groups')
+          .insert({ name: newGroupName.trim(), description: newGroupDesc.trim() || null, owner_id: user.id }).select('id').single()
+        if (createError) throw new Error(createError.message)
+        groupId = data.id
+      }
+      navigate(`/groups/${groupId}`)
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not create the group.')
+    } finally { setCreating(false) }
+  }
+
+  const handleJoin = (event: React.FormEvent) => {
+    event.preventDefault()
+    const code = inviteCodeFromInput(inviteInput)
+    if (!code) {
+      setActionError('Enter a valid invite code or an /invite/ link.')
+      return
     }
-    groups.unshift(newGroup)
-    setShowCreateModal(false)
-    setNewGroupName('')
-    setNewGroupDesc('')
-    navigate(`/groups/${newGroup.id}`)
+    navigate(`/invite/${encodeURIComponent(code)}`)
   }
 
   return (
@@ -53,12 +70,15 @@ export function Groups() {
             Compare usage with friends in private groups
           </p>
         </div>
-        <Button onClick={() => setShowCreateModal(true)}>
-          <Plus size={18} /> Create Group
-        </Button>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <Button variant="outline" onClick={() => { setActionError(null); setShowJoinModal(true) }}><UserPlus size={18} /> Join Group</Button>
+          <Button onClick={() => { setActionError(null); setShowCreateModal(true) }}><Plus size={18} /> Create Group</Button>
+        </div>
       </div>
 
-      {groups.length === 0 ? (
+      {isDemoMode && <p style={{ marginBottom: 16, color: 'var(--fg-muted)' }}>Sample groups; demo changes last only until reload.</p>}
+      {error && <p role="alert">Could not load groups: {error} <Button variant="outline" onClick={reload}>Retry</Button></p>}
+      {loading ? <p role="status">Loading groups…</p> : !error && groups.length === 0 ? (
         <Card style={{ textAlign: 'center', padding: '60px 40px' }}>
           <div style={{
             width: 80, height: 80,
@@ -72,7 +92,7 @@ export function Groups() {
           <CardTitle>No groups yet</CardTitle>
           <CardDescription>
             Create a private group to compare AI usage and spending with friends.
-            Only group members can see each other's data.
+            Group membership is private. Members can compare usage summaries even when public statistics are disabled.
           </CardDescription>
           <div style={{ maxWidth: 400, margin: '0 auto 24px' }}>
             <Button onClick={() => setShowCreateModal(true)}>
@@ -97,6 +117,7 @@ export function Groups() {
               onChange={(e) => setNewGroupName(e.target.value)}
               placeholder="e.g., The Token Burners"
               required
+              maxLength={100}
               autoFocus
             />
             <Input
@@ -104,18 +125,28 @@ export function Groups() {
               value={newGroupDesc}
               onChange={(e) => setNewGroupDesc(e.target.value)}
               placeholder="What's this group about?"
+              maxLength={1000}
             />
+            {actionError && <p role="alert" style={{ color: 'var(--danger)' }}>{actionError}</p>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 8 }}>
               <Button type="button" variant="secondary" onClick={() => setShowCreateModal(false)}>
                 Cancel
               </Button>
-              <Button type="submit">
+              <Button type="submit" loading={creating} disabled={creating}>
                 <Plus size={18} /> Create Group
               </Button>
             </div>
           </form>
         </Modal>
       )}
+      {showJoinModal && <Modal onClose={() => setShowJoinModal(false)} title="Join a Group">
+        <form onSubmit={handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Input label="Invite link or code" value={inviteInput} onChange={e => setInviteInput(e.target.value)} required autoFocus />
+          <p style={{ color: 'var(--fg-muted)' }}>You’ll review the sharing permissions before joining.</p>
+          {actionError && <p role="alert" style={{ color: 'var(--danger)' }}>{actionError}</p>}
+          <Button type="submit">Review Invitation</Button>
+        </form>
+      </Modal>}
     </div>
   )
 }

@@ -1,214 +1,100 @@
-# Supabase Setup Guide
+# Hosted backend and GitHub OAuth
 
-This guide walks you through setting up Supabase for **Burn Your Money With Slop** to enable real usage tracking, private groups, and persistent data.
+The existing production project is **`skvbxlhnjnksmzdnchlu`**, at https://skvbxlhnjnksmzdnchlu.supabase.co. Friends only use GitHub sign-in and collector login; they do not create Supabase projects.
 
-## Prerequisites
+## Required manual step: register GitHub OAuth
 
-- A GitHub account (for OAuth)
-- A Supabase account (free tier works)
+Open https://github.com/settings/applications/new and enter:
 
----
+| Field | Exact value |
+| --- | --- |
+| Application name | `Burn Your Money With Slop` |
+| Homepage URL | `https://howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz` |
+| Authorization callback URL | `https://skvbxlhnjnksmzdnchlu.supabase.co/auth/v1/callback` |
+| Enable Device Flow | **Off** |
 
-## 1. Create a Supabase Project
+Register the application and generate a client secret. In [Supabase Auth → Providers](https://supabase.com/dashboard/project/skvbxlhnjnksmzdnchlu/auth/providers), enable **GitHub**, enter its Client ID and Client Secret, and save.
 
-1. Go to [supabase.com](https://supabase.com) and sign in
-2. Click **New Project**
-3. Choose your organization
-4. Enter project details:
-   - **Name**: `burnyourmoneywithslop` (or your preferred name)
-   - **Database Password**: Generate a strong password (save it!)
-   - **Region**: Choose closest to your users
-5. Click **Create new project**
-6. Wait for provisioning (~2 minutes)
+**The OAuth secret belongs only in Supabase's provider configuration.** It is not a GitHub Actions `VITE_…` secret, browser setting, tool environment variable or collector credential. Do not commit it or send it in chat. GitHub OAuth app registration is a manual settings flow, not the previously suggested OAuth-registration API.
 
----
+The GitHub callback above is Supabase's callback, not the website's `/auth/callback`. After GitHub/Supabase complete authentication, Supabase returns a PKCE code to the website or the collector.
 
-## 2. Get Your Project Credentials
+## Hosted Auth settings
 
-1. In your Supabase dashboard, go to **Settings** → **API**
-2. Copy these values:
-   - **Project URL** (e.g., `https://abcdefghijklmnop.supabase.co`)
-   - **anon/public key** (starts with `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`)
+`deploy/production/supabase/config.toml` declares only these application settings:
 
----
+- Site URL: `https://howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz`
+- Website redirect: production `/auth/callback`
+- Development redirects: `http://localhost:5173/auth/callback` and `http://127.0.0.1:5173/auth/callback`
+- Collector redirect: `http://127.0.0.1:48173/auth/callback/*` (only the random-state path segment is wildcarded)
+- Email/password and anonymous sign-in disabled
 
-## 3. Enable GitHub OAuth
+Only the collector callback uses HTTP, on a loopback-only listener. Supabase requests and production website authentication require HTTPS. The verifier stays in the collector's memory; refreshable session credentials are private on disk. Website and collector sessions are independent.
 
-1. In Supabase dashboard, go to **Authentication** → **Providers**
-2. Find **GitHub** and click to expand
-3. Toggle **Enabled** ON
-4. You'll need a GitHub OAuth App - create one:
+## Administrator deployment
 
-### Create GitHub OAuth App
+The repository pins Supabase CLI **3.2.0**. Use the local binary after `npm ci`, and consult `--help` before adapting commands. V3 defaults database operations to local; hosted operations require an explicit `--remote` and mutations require `--yes`.
 
-1. Go to [GitHub Settings → Developer settings → OAuth Apps](https://github.com/settings/developers)
-2. Click **New OAuth App**
-3. Fill in:
-   - **Application name**: `Burn Your Money With Slop`
-   - **Homepage URL**: `https://burnyourmoneywithslop.joosibaeri.xyz` (or your custom domain)
-   - **Authorization callback URL**: `https://<your-project-ref>.supabase.co/auth/v1/callback`
-     - Find your project ref in the Supabase URL: `https://<ref>.supabase.co`
-   - **Enable Device Flow**: Unchecked
-4. Click **Register application**
-5. Copy **Client ID**
-6. Click **Generate a new client secret** and copy it
-7. Back in Supabase, paste **Client ID** and **Client Secret**
-8. Click **Save**
+Use a scoped Supabase access token limited to this project and the required permissions when automating deployment. Never store it in this public repository or any `VITE_…` variable.
 
----
+```sh
+# Review the actual SQL and tests before applying the migration.
+npm run typecheck
+npm test -- --reporter=dot
+deno check --frozen --config supabase/functions/ingest-usage/deno.json supabase/functions/ingest-usage/index.ts
 
-## 4. Run Database Migrations
+# Preview database changes; skip unrelated local Vault configuration.
+./node_modules/.bin/supabase db push --remote=skvbxlhnjnksmzdnchlu --dry-run --skip-vault --yes
+./node_modules/.bin/supabase db push --remote=skvbxlhnjnksmzdnchlu --skip-vault --yes
 
-### Option A: Using Supabase CLI (Recommended)
+# Push only the partial hosted Auth file, not a developer's whole local config.
+./node_modules/.bin/supabase config diff --workdir deploy/production --remote=skvbxlhnjnksmzdnchlu
+./node_modules/.bin/supabase config push --workdir deploy/production --remote=skvbxlhnjnksmzdnchlu --yes
 
-```bash
-# Install CLI
-npm install -g supabase@latest
-
-# Login
-supabase login
-
-# Link to your project
-supabase link --project-ref <your-project-ref>
-
-# Push migrations
-supabase db push --remote --yes
+# Deploy only this function, without Docker.
+./node_modules/.bin/supabase functions deploy ingest-usage --remote=skvbxlhnjnksmzdnchlu --use-api --no-verify-jwt=false --yes
 ```
 
-### Option B: Using Supabase Dashboard
+`--no-verify-jwt=false` explicitly keeps the platform JWT verifier enabled, including when a developer's local config disables it. The current platform supports both legacy and asymmetric signing keys. Its compatibility check can still admit API-key-only calls, so the pinned `withSupabase({ auth: 'user' })` wrapper also validates the caller's user session inside the function. Database operations retain that caller's RLS. An anon/publishable key alone cannot insert events. Keep both layers, never remove the user-authentication wrapper, and do not use a service-role ingestion client.
 
-1. Go to **SQL Editor** in Supabase dashboard
-2. Copy the contents of `supabase/migrations/20261117000001_initial_schema.sql`
-3. Paste and run
-4. Verify tables created in **Table Editor**
+Do not run the initial SQL manually through the dashboard and then also apply it with the CLI; migration history must match. Do not rerun the initial schema destructively. The partial production config leaves undeclared hosted settings—including GitHub provider credentials—unchanged. Local user configuration in `supabase/config.toml` is separate and must be preserved.
 
----
+## Frontend configuration
 
-## 5. Configure Storage Bucket (for billing receipts)
+The Actions repository secrets are:
 
-1. Go to **Storage** in Supabase dashboard
-2. Click **Create bucket**
-3. Settings:
-   - **Name**: `usage-data`
-   - **Public bucket**: OFF (private)
-4. Click **Create bucket**
-5. Set up RLS policies (SQL Editor):
-
-```sql
--- Allow authenticated users to upload their own files
-create policy "Users can upload own files"
-on storage.objects for insert
-to authenticated
-with check (
-  bucket_id = 'usage-data' and
-  (storage.foldername(name))[1] = (select auth.jwt()->>'sub')
-);
-
--- Allow users to read their own files
-create policy "Users can read own files"
-on storage.objects for select
-to authenticated
-using (
-  bucket_id = 'usage-data' and
-  (storage.foldername(name))[1] = (select auth.jwt()->>'sub')
-);
+```dotenv
+VITE_SUPABASE_URL=https://skvbxlhnjnksmzdnchlu.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLIC_PUBLISHABLE_KEY
 ```
 
----
+Get the publishable key from [API Keys](https://supabase.com/dashboard/project/skvbxlhnjnksmzdnchlu/settings/api-keys). `VITE_SUPABASE_ANON_KEY` remains a legacy fallback. These values are intentionally public in the browser and in `collector-config.json`; secret/service-role keys are rejected. Browser storage cannot override deployment-managed configuration.
 
-## 6. Deploy Edge Function
+Local development can use those public values in untracked `.env.local`. `localhost:5173` is a secure browser context for testing while a custom-domain certificate is pending. Production website sign-in must wait for valid TLS; see [CUSTOM_DOMAIN.md](CUSTOM_DOMAIN.md).
 
-```bash
-# Deploy the ingest-usage function
-supabase functions deploy ingest-usage --remote --yes
-```
+## Schema/access model
 
-Or via Dashboard:
-1. Go to **Edge Functions**
-2. Click **Create a new function**
-3. Name: `ingest-usage`
-4. Paste the contents of `supabase/functions/ingest-usage/index.ts`
-5. Add `import_map.json` content
-6. Deploy
+- `profiles`: public GitHub display identity, public-statistics toggle; users cannot rewrite another GitHub identity.
+- `groups`/`group_members`: member-only reads; creation enrolls the owner; the invite RPC only enrolls its authenticated caller after explicit website confirmation.
+- `user_subscriptions`: owner-only rows with retained historical periods; `set_subscription` edits the current UTC month.
+- `usage_events`: owner-only metrics with mandatory opaque `event_id`; uniqueness is `(user_id, tool, event_id)`. Only `model_request` events are accepted—no cumulative/session summaries or arbitrary metadata.
+- `monthly_usage_summary`: controlled aggregates, visible for public statistics, the owner, or consenting shared-group members. Raw events/invoices are never exposed through it. Real costs repeat per tool in this view; count once per **user/month**, then sum group members separately.
+- `usage-data`: private receipt bucket, with owner-folder insert/select/update/delete policies. Receipt replacement requires all three write/read policies. No receipt contents are published.
 
----
+RLS and explicit grants are separate requirements. Do not “fix” permissions by granting arbitrary membership inserts, profile identity updates, or broad table access. Privileged helpers are in an unexposed private schema with explicit visibility/ownership checks and restricted execution; the public view is security-invoker.
 
-## 7. Configure Environment Variables
+The follow-up `lock_down_application_grants` migration explicitly revokes permissive inherited table privileges before granting the intended operations/columns. Applying only the initial schema is insufficient on a project with default `ALL` grants. Local tests simulate those hosted defaults and apply every migration in order. Project-wide default privileges and unrelated objects are left unchanged.
 
-### For Local Development
+Ingestion accepts 1–500 events and at most 1 MiB. Supplied user IDs, prompt/code/snapshot/transcript fields and arbitrary metadata are discarded. Caller identity comes from authentication, never from a payload field.
 
-Create `.env.local` in the project root:
+## Verification
 
-```env
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-key
-```
+1. Inspect migrations and security/performance/health advisors after deployment.
+2. With only the publishable key, anonymous ingestion must return **401**. Public profiles/allowed aggregates are readable, but raw events, subscriptions and receipts are not.
+3. Once GitHub OAuth is configured, test website sign-in and direct `/auth/callback` loading. Confirm your GitHub avatar/name/username.
+4. Run collector login, a new tool request and `flush`. Refresh the website; repeat `flush` and confirm totals don't increase.
+5. Select a shared plan covering two tools and verify one monthly charge. Test an invoice override and historical month retention.
+6. Create an invitation, sign in as another user, and explicitly confirm joining. Declining/loading an invite must not enroll anyone.
+7. Disable public statistics and verify anonymous visitors cannot see them, while consenting group members still can. Raw invoices/receipts remain owner-only.
 
-### For GitHub Pages Deployment
-
-1. Go to your GitHub repo: `https://github.com/Joosibaeri/burnyourmoneywithslop`
-2. **Settings** → **Secrets and variables** → **Actions**
-3. Add these **Repository secrets**:
-   - `VITE_SUPABASE_URL` = your project URL
-   - `VITE_SUPABASE_ANON_KEY` = your anon key
-
----
-
-## 8. Verify Everything Works
-
-1. Run locally: `npm run dev`
-2. Sign in with GitHub
-3. Check **Settings** → **Supabase** tab - should show "Connected"
-4. Install a plugin (see [PLUGIN_INSTALL.md](./PLUGIN_INSTALL.md))
-5. Use an AI tool - check Supabase **Table Editor** → `usage_events` for data
-
----
-
-## Troubleshooting
-
-### "Connection failed" in Settings
-
-- Verify Project URL and Anon Key are correct
-- Check Supabase project is not paused
-- Ensure GitHub OAuth is enabled in Supabase
-
-### No data in usage_events
-
-- Check Edge Function logs: `supabase functions logs ingest-usage`
-- Verify plugin is installed and running
-- Check browser console for errors
-
-### RLS Policy Errors
-
-Run in SQL Editor:
-```sql
--- Check current policies
-select * from pg_policies where schemaname = 'public';
-
--- Grant explicit access (required in Supabase v3+)
-grant usage on schema public to anon, authenticated;
-grant select, insert, update, delete on public.profiles to authenticated;
-grant select, insert, update, delete on public.groups to authenticated;
-grant select, insert, update, delete on public.group_members to authenticated;
-grant select, insert, update, delete on public.user_subscriptions to authenticated;
-grant select, insert on public.usage_events to authenticated;
-grant select on public.monthly_usage_summary to authenticated;
-```
-
----
-
-## Security Notes
-
-- Never commit `.env.local` or share your `service_role` key
-- The `anon` key is safe to use in frontend code
-- RLS policies ensure users only see their own data
-- Groups are private - only members can view group data
-- Subscription data is per-user and never shared
-
----
-
-## Next Steps
-
-- [Custom Domain Setup](./CUSTOM_DOMAIN.md)
-- [Plugin Installation Guide](./PLUGIN_INSTALL.md)
-- [API Reference](./API_REFERENCE.md)
+Authenticated website/collector end-to-end verification requires the manually registered GitHub OAuth app. Passing local schema/collector tests is not a substitute for that final check.

@@ -5,28 +5,88 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
 import { GitBranch, Database, Key, Save, AlertCircle, HelpCircle, ExternalLink, Trash2, Edit2, Unlock } from 'lucide-react'
-import { useState } from 'react'
-import { SUBSCRIPTION_CATALOG, calculateMonthlySubscriptionCost, formatCurrency as fmtCurrency } from '@/lib/utils'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { createClient, type Session, type User } from '@supabase/supabase-js'
+import { SUBSCRIPTION_CATALOG, calculateMonthlySubscriptionCost, formatCurrencyPrecise as fmtCurrency } from '@/lib/utils'
+import { githubLogin as getGithubLogin, loadSubscriptions, saveSubscription, subscriptionTools, TOOLS, type SubscriptionSelection } from '@/lib/data'
+import { isPublishableKey, storedClientConfig } from '@/lib/client-config'
+import { COLLECTORS, COLLECTOR_QUICKSTART } from '@/lib/collectors'
 
 export function Settings() {
   const { user, session, signOut } = useAuth()
   const { supabase, isDemoMode } = useSupabase()
-  const [activeTab, setActiveTab] = useState<'account' | 'supabase' | 'subscriptions' | 'plugins'>('account')
-  const [supabaseUrl, setSupabaseUrl] = useState('')
-  const [supabaseKey, setSupabaseKey] = useState('')
+  const userId = user?.id
+  const [params, setParams] = useSearchParams()
+  const activeTab = params.get('tab') || 'account'
+  const storedConfig = storedClientConfig()
+  const deploymentManaged = !!import.meta.env.VITE_SUPABASE_URL
+  const [supabaseUrl, setSupabaseUrl] = useState(import.meta.env.VITE_SUPABASE_URL || storedConfig.url)
+  const [supabaseKey, setSupabaseKey] = useState(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || storedConfig.key)
   const [supabaseStatus, setSupabaseStatus] = useState<'idle' | 'checking' | 'connected' | 'error'>('idle')
-  const [subscriptions, setSubscriptions] = useState<Array<{ catalogId: string; tierId: string; customPrice?: number }>>([
-    { catalogId: 'claude-pro', tierId: 'pro' },
-    { catalogId: 'cursor', tierId: 'premium' },
-    { catalogId: 'opencode', tierId: 'free' },
-  ])
+  const [subscriptions, setSubscriptions] = useState<SubscriptionSelection[]>(isDemoMode ? [
+    { catalogId: 'claude-pro', tierId: 'pro', tools: subscriptionTools('claude-pro') },
+    { catalogId: 'cursor', tierId: 'premium', tools: subscriptionTools('cursor') },
+    { catalogId: 'opencode', tierId: 'free', tools: subscriptionTools('opencode') },
+  ] : [])
   const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(!isDemoMode)
+  const [error, setError] = useState<string | null>(null)
+  const [statsPublic, setStatsPublic] = useState(true)
+
+  const fetchSubscriptions = async () => (await loadSubscriptions(supabase, user!.id)).filter(sub => sub.active).map(sub => ({
+    catalogId: sub.catalog, tierId: sub.tier, customPrice: sub.custom_price_usd == null ? undefined : Number(sub.custom_price_usd), tools: sub.tools.length ? sub.tools : subscriptionTools(sub.catalog),
+  }))
+
+  useEffect(() => {
+    if (isDemoMode || !userId) return
+    let active = true
+    Promise.all([
+      loadSubscriptions(supabase, userId),
+      supabase.from('profiles').select('stats_public').eq('id', userId).single(),
+    ]).then(([records, profile]) => {
+      if (!active) return
+      if (profile.error) throw new Error(profile.error.message)
+      setStatsPublic(profile.data.stats_public)
+      setSubscriptions(records.filter(sub => sub.active).map(sub => ({ catalogId: sub.catalog, tierId: sub.tier, customPrice: sub.custom_price_usd == null ? undefined : Number(sub.custom_price_usd), tools: sub.tools.length ? sub.tools : subscriptionTools(sub.catalog) })))
+    }).catch(err => { if (active) setError(err instanceof Error ? err.message : 'Could not load settings.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [supabase, isDemoMode, userId])
+
+  const handleSaveSubscription = async (sub: SubscriptionSelection, active = true): Promise<boolean> => {
+    setSaving(true)
+    setError(null)
+    try {
+      if (isDemoMode) setSubscriptions(previous => [...previous.filter(old => old.catalogId !== sub.catalogId), ...(active ? [sub] : [])])
+      else {
+        await saveSubscription(supabase, sub, active)
+        setSubscriptions(await fetchSubscriptions())
+      }
+      return true
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not save subscription.'); return false }
+    finally { setSaving(false) }
+  }
+
+  const handleVisibility = async (visible: boolean) => {
+    if (!user) return
+    setSaving(true)
+    setError(null)
+    try {
+      if (!isDemoMode) {
+        const { error: updateError } = await supabase.from('profiles').update({ stats_public: visible }).eq('id', user.id).select('id').single()
+        if (updateError) throw new Error(updateError.message)
+      }
+      setStatsPublic(visible)
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not update visibility.') }
+    finally { setSaving(false) }
+  }
 
   const tabs = [
     { id: 'account', label: 'Account', icon: GitBranch },
     { id: 'supabase', label: 'Supabase', icon: Database },
     { id: 'subscriptions', label: 'Subscriptions', icon: Key },
-    { id: 'plugins', label: 'Plugins', icon: HelpCircle },
+    { id: 'plugins', label: 'Collectors', icon: HelpCircle },
   ]
 
   const totalMonthlyCost = calculateMonthlySubscriptionCost(subscriptions)
@@ -39,7 +99,7 @@ export function Settings() {
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
-            onClick={() => setActiveTab(id as typeof activeTab)}
+            onClick={() => setParams({ tab: id })}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -60,7 +120,11 @@ export function Settings() {
         ))}
       </div>
 
-      {activeTab === 'account' && <AccountSettings user={user} session={session} onSignOut={signOut} />}
+      {error && <p role="alert" style={{ marginBottom: 20, color: 'var(--danger)' }}>{error}</p>}
+      {loading && <p role="status">Loading saved settings…</p>}
+      {isDemoMode && <p style={{ marginBottom: 20, color: 'var(--fg-muted)' }}>Demo settings; subscription and visibility changes are not persisted.</p>}
+
+      {activeTab === 'account' && <AccountSettings user={user} session={session} onSignOut={signOut} statsPublic={statsPublic} onVisibilityChange={handleVisibility} saving={saving || loading} />}
       {activeTab === 'supabase' && <SupabaseSettings
         isDemoMode={isDemoMode}
         supabaseUrl={supabaseUrl}
@@ -71,11 +135,12 @@ export function Settings() {
         setSupabaseStatus={setSupabaseStatus}
         saving={saving}
         setSaving={setSaving}
-        supabase={supabase}
+        deploymentManaged={deploymentManaged}
       />}
       {activeTab === 'subscriptions' && <SubscriptionSettings
         subscriptions={subscriptions}
-        setSubscriptions={setSubscriptions}
+        onSave={handleSaveSubscription}
+        saving={saving || loading}
         totalMonthlyCost={totalMonthlyCost}
       />}
       {activeTab === 'plugins' && <PluginSettings />}
@@ -83,10 +148,14 @@ export function Settings() {
   )
 }
 
-function AccountSettings({ user, session, onSignOut }: { user: any; session: any; onSignOut: () => void }) {
-  const githubLogin = user?.user_metadata?.login || 'user'
+function AccountSettings({ user, session, onSignOut, statsPublic, onVisibilityChange, saving }: { user: User | null; session: Session | null; onSignOut: () => Promise<void>; statsPublic: boolean; onVisibilityChange: (visible: boolean) => Promise<void>; saving: boolean }) {
+  const githubLogin = getGithubLogin(user) || 'user'
   const githubName = user?.user_metadata?.name || user?.user_metadata?.full_name || githubLogin
   const avatarUrl = user?.user_metadata?.avatar_url || `https://github.com/${githubLogin}.png`
+  const [error, setError] = useState<string | null>(null)
+  const handleSignOut = async () => {
+    try { await onSignOut() } catch { setError('Could not sign out. Please try again.') }
+  }
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
@@ -111,10 +180,15 @@ function AccountSettings({ user, session, onSignOut }: { user: any; session: any
                 </a>
               </p>
               <p style={{ color: 'var(--fg-subtle)', fontSize: '0.75rem', marginTop: 4 }}>
-                Signed in via GitHub • {new Date(user?.created_at || Date.now()).toLocaleDateString()}
+                Signed in via GitHub • {user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'Unknown sign-up date'}
               </p>
             </div>
           </div>
+
+          <label style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            <input type="checkbox" checked={statsPublic} onChange={event => onVisibilityChange(event.target.checked)} disabled={saving} />
+            <span><strong>Public usage statistics</strong><br />Public by default. Disable to share aggregates only with your private groups. GitHub identity stays public; raw events and receipts are always private.</span>
+          </label>
 
           <div style={{ padding: '16px', background: 'var(--bg)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
             <h4 style={{ fontWeight: 600, marginBottom: 12 }}>Session</h4>
@@ -129,8 +203,8 @@ function AccountSettings({ user, session, onSignOut }: { user: any; session: any
 
       <Card>
         <CardHeader>
-          <CardTitle>Danger Zone</CardTitle>
-          <CardDescription>Irreversible actions</CardDescription>
+          <CardTitle>Session Controls</CardTitle>
+          <CardDescription>Manage your authenticated sessions</CardDescription>
         </CardHeader>
         <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ padding: '16px', background: 'var(--danger-bg)', border: '1px solid var(--danger)', borderRadius: 'var(--radius-sm)' }}>
@@ -138,24 +212,16 @@ function AccountSettings({ user, session, onSignOut }: { user: any; session: any
               <div>
                 <h4 style={{ fontWeight: 600, color: 'var(--danger)', marginBottom: 4 }}>Sign Out Everywhere</h4>
                 <p style={{ color: 'var(--fg-muted)', fontSize: '0.875rem' }}>
-                  Sign out of all sessions on all devices. You'll need to sign in again.
+                  Revoke session refresh on all devices, including collectors. Existing access tokens expire normally; sign in again to continue syncing.
                 </p>
               </div>
-              <Button variant="danger" onClick={onSignOut}>
+              <Button variant="danger" onClick={handleSignOut}>
                 <Unlock size={18} /> Sign Out
               </Button>
             </div>
           </div>
 
-          <div style={{ padding: '16px', background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>
-            <h4 style={{ fontWeight: 600, marginBottom: 4 }}>Delete Account</h4>
-            <p style={{ color: 'var(--fg-muted)', fontSize: '0.875rem', marginBottom: 12 }}>
-              Permanently delete your account and all associated data. This cannot be undone.
-            </p>
-            <Button variant="danger" style={{ background: 'transparent', borderColor: 'var(--danger)', color: 'var(--danger)' }}>
-              <Trash2 size={18} /> Delete Account
-            </Button>
-          </div>
+          {error && <p role="alert" style={{ color: 'var(--danger)' }}>{error}</p>}
         </CardContent>
       </Card>
     </div>
@@ -172,7 +238,7 @@ function SupabaseSettings({
   setSupabaseStatus,
   saving,
   setSaving,
-  supabase,
+  deploymentManaged,
 }: {
   isDemoMode: boolean
   supabaseUrl: string
@@ -183,7 +249,7 @@ function SupabaseSettings({
   setSupabaseStatus: (v: 'idle' | 'checking' | 'connected' | 'error') => void
   saving: boolean
   setSaving: (v: boolean) => void
-  supabase: any
+  deploymentManaged: boolean
 }) {
   const handleTestConnection = async () => {
     setSupabaseStatus('checking')
@@ -191,31 +257,31 @@ function SupabaseSettings({
     try {
       if (!supabaseUrl || !supabaseKey) {
         setSupabaseStatus('error')
-        return
+        return false
       }
-      const testClient = supabase.supabaseKey?.createClient || ((url: string, key: string) =>
-        import('@supabase/supabase-js').then(m => m.createClient(url, key)))
-      const client = await testClient(supabaseUrl, supabaseKey)
+      const url = new URL(supabaseUrl)
+      if (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new Error('Use HTTPS.')
+      if (!isPublishableKey(supabaseKey)) throw new Error('Use a publishable or legacy anon key, never a privileged key.')
+      const client = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } })
       const { error } = await client.from('profiles').select('count', { count: 'exact', head: true })
-      if (error && error.code !== '42P01') throw error
+      if (error) throw error
       setSupabaseStatus('connected')
+      return true
     } catch {
       setSupabaseStatus('error')
+      return false
     } finally {
       setSaving(false)
     }
   }
 
   const handleSave = async () => {
-    setSaving(true)
-    // In real app, save to localStorage or send to backend
-    localStorage.setItem('supabase_url', supabaseUrl)
-    localStorage.setItem('supabase_key', supabaseKey)
-    setTimeout(() => {
-      setSaving(false)
-      setSupabaseStatus('idle')
+    if (deploymentManaged || !await handleTestConnection()) return
+    try {
+      localStorage.setItem('supabase_url', supabaseUrl)
+      localStorage.setItem('supabase_key', supabaseKey)
       window.location.reload()
-    }, 1000)
+    } catch { setSupabaseStatus('error') }
   }
 
   return (
@@ -226,7 +292,7 @@ function SupabaseSettings({
             <div>
               <CardTitle>Supabase Connection</CardTitle>
               <CardDescription>
-                Connect your Supabase project to enable real-time sync, private groups, and persistent data.
+                {deploymentManaged ? 'This website uses a shared hosted backend. Friends do not need their own Supabase project.' : 'Connect a Supabase backend for persistent usage and private groups.'}
               </CardDescription>
             </div>
             {isDemoMode && (
@@ -240,18 +306,20 @@ function SupabaseSettings({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <Input
               label="Project URL"
+              readOnly={deploymentManaged}
               value={supabaseUrl}
               onChange={(e) => setSupabaseUrl(e.target.value)}
               placeholder="https://your-project.supabase.co"
-              helperText="Find this in Settings → API"
+              helperText="Project URL from Supabase Dashboard → Connect"
             />
             <Input
-              label="Anon/Publishable Key"
+              label="Publishable Key (legacy anon supported)"
+              readOnly={deploymentManaged}
               value={supabaseKey}
               onChange={(e) => setSupabaseKey(e.target.value)}
-              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              placeholder="sb_publishable_..."
               type="password"
-              helperText="Find this in Settings → API"
+              helperText="Project Settings → API Keys. Never paste a secret or service-role key."
             />
           </div>
 
@@ -267,7 +335,7 @@ function SupabaseSettings({
                 <p style={{ color: 'var(--fg-muted)', fontSize: '0.875rem' }}>
                   {supabaseStatus === 'connected' && '✅ Connected and ready'}
                   {supabaseStatus === 'checking' && '🔄 Testing connection...'}
-                  {supabaseStatus === 'error' && '❌ Connection failed — check credentials'}
+                  {supabaseStatus === 'error' && '❌ Connection failed — check the public key, HTTPS URL, and migrations'}
                   {supabaseStatus === 'idle' && '⏸️ Not tested yet'}
                 </p>
               </div>
@@ -275,19 +343,21 @@ function SupabaseSettings({
                 <Button variant="outline" onClick={handleTestConnection} disabled={saving || !supabaseUrl || !supabaseKey}>
                   <Database size={18} /> Test Connection
                 </Button>
-                <Button onClick={handleSave} disabled={saving || !supabaseUrl || !supabaseKey} loading={saving}>
+                <Button onClick={handleSave} disabled={deploymentManaged || saving || !supabaseUrl || !supabaseKey} loading={saving}>
                   <Save size={18} /> Save & Reload
                 </Button>
               </div>
             </div>
           </div>
 
+          {deploymentManaged && <p style={{ color: 'var(--fg-muted)' }}>This deployment’s connection is managed through GitHub Actions. It cannot be overridden in the browser.</p>}
+
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
             <h4 style={{ fontWeight: 600, marginBottom: 16 }}>Required Setup</h4>
             <SetupStep number={1} title="Enable GitHub Auth" description="In Supabase Dashboard → Authentication → Providers → GitHub, enable GitHub and add your OAuth credentials." />
-            <SetupStep number={2} title="Run Migrations" description="Apply the database schema from <code>supabase/migrations/</code> using <code>supabase db push --remote --yes</code>." />
-            <SetupStep number={3} title="Configure Storage" description="Create a private bucket named <code>usage-data</code> for billing receipts and exports." />
-            <SetupStep number={4} title="Set Custom Domain" description="In GitHub Pages settings, add <code>burnyourmoneywithslop.joosibaeri.xyz</code> as a custom domain with CNAME to <code>joosibaeri.github.io</code>." />
+            <SetupStep number={2} title="Administrator: deploy backend" description="Apply the reviewed migrations and deploy ingestion using the pinned local Supabase CLI with an explicit remote target. See the repository’s setup guide." />
+            <SetupStep number={3} title="Private Storage" description="The migration creates the private <code>usage-data</code> receipt bucket and owner-only policies." />
+            <SetupStep number={4} title="Custom Domain" description="GitHub Pages uses <code>howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz</code> with a CNAME to <code>joosibaeri.github.io</code>. HTTPS is required for GitHub sign-in." />
           </div>
         </CardContent>
       </Card>
@@ -319,27 +389,36 @@ function SetupStep({ number, title, description }: { number: number; title: stri
 
 function SubscriptionSettings({
   subscriptions,
-  setSubscriptions,
+  onSave,
+  saving,
   totalMonthlyCost,
 }: {
-  subscriptions: Array<{ catalogId: string; tierId: string; customPrice?: number }>
-  setSubscriptions: React.Dispatch<React.SetStateAction<Array<{ catalogId: string; tierId: string; customPrice?: number }>>>
+  subscriptions: SubscriptionSelection[]
+  onSave: (sub: SubscriptionSelection, active?: boolean) => Promise<boolean>
+  saving: boolean
   totalMonthlyCost: number
 }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [customPrice, setCustomPrice] = useState('')
+  const [priceError, setPriceError] = useState<string | null>(null)
 
-  const handleTierChange = (catalogId: string, tierId: string) => {
-    setSubscriptions(prev => prev.map(s => s.catalogId === catalogId ? { ...s, tierId, customPrice: undefined } : s))
+  const handleTierChange = async (catalogId: string, tierId: string) => {
+    const sub = subscriptions.find(sub => sub.catalogId === catalogId)
+    await onSave({ catalogId, tierId, tools: sub?.tools ?? subscriptionTools(catalogId) })
   }
 
-  const handleCustomPrice = (catalogId: string) => {
-    const price = parseFloat(customPrice)
-    if (!isNaN(price)) {
-      setSubscriptions(prev => prev.map(s => s.catalogId === catalogId ? { ...s, customPrice: price } : s))
+  const handleCustomPrice = async (catalogId: string) => {
+    const sub = subscriptions.find(sub => sub.catalogId === catalogId)
+    const price = Number(customPrice)
+    if (!sub || !customPrice.trim() || !Number.isFinite(price) || price < 0 || price > 99_999_999.99) {
+      setPriceError('Enter a valid, non-negative invoice amount in USD.')
+      return
     }
-    setEditingId(null)
-    setCustomPrice('')
+    if (await onSave({ ...sub, customPrice: price })) {
+      setEditingId(null)
+      setCustomPrice('')
+      setPriceError(null)
+    }
   }
 
   return (
@@ -355,11 +434,13 @@ function SubscriptionSettings({
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--accent)' }}>{fmtCurrency(totalMonthlyCost)}/mo</div>
-              <div style={{ color: 'var(--fg-subtle)', fontSize: '0.875rem' }}>Total Real Cost</div>
+              <div style={{ color: 'var(--fg-subtle)', fontSize: '0.875rem' }}>Selected Plan Prices</div>
             </div>
           </div>
         </CardHeader>
         <CardContent>
+          <p style={{ color: 'var(--fg-muted)', marginBottom: 20 }}>Selections and invoice-price edits apply to the current UTC calendar month. Older months are retained. The prices below are not spending until relevant usage is recorded.</p>
+          {priceError && <p role="alert" style={{ color: 'var(--danger)', marginBottom: 16 }}>{priceError}</p>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {SUBSCRIPTION_CATALOG.map(catalog => {
               const sub = subscriptions.find(s => s.catalogId === catalog.id)
@@ -403,7 +484,8 @@ function SubscriptionSettings({
                       const isActive = sub?.tierId === tier.id
                       return (
                         <button
-                          key={tier.id}
+                           key={tier.id}
+                           disabled={saving}
                           onClick={() => handleTierChange(catalog.id, tier.id)}
                           style={{
                             padding: '8px 14px',
@@ -439,16 +521,29 @@ function SubscriptionSettings({
                             borderRadius: 'var(--radius-sm)',
                           }}
                         />
-                        <Button size="sm" onClick={() => handleCustomPrice(catalog.id)}>Save</Button>
+                        <Button size="sm" onClick={() => handleCustomPrice(catalog.id)} disabled={saving}>Save Invoice Price</Button>
                         <Button size="sm" variant="ghost" onClick={() => { setEditingId(null); setCustomPrice('') }}>Cancel</Button>
                       </div>
                     )}
                     {!editingId && sub && (
-                      <Button variant="ghost" size="sm" onClick={() => { setEditingId(catalog.id); setCustomPrice(String(sub.customPrice || '')) }}>
+                      <Button variant="ghost" size="sm" disabled={saving} onClick={() => { setEditingId(catalog.id); setCustomPrice(sub.customPrice === undefined ? '' : String(sub.customPrice)); setPriceError(null) }}>
                         <Edit2 size={14} /> Custom Price
                       </Button>
                     )}
                   </div>
+
+                  {sub && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+                    <span style={{ fontSize: '0.8125rem' }}>Tools covered:</span>
+                    {Object.entries(TOOLS).map(([toolId, tool]) => <label key={toolId} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+                      <input type="checkbox" checked={sub.tools.includes(toolId)} disabled={saving} onChange={event => {
+                        const selected = event.target.checked ? [...sub.tools, toolId] : sub.tools.filter(tool => tool !== toolId)
+                        if (!selected.length) { setPriceError('Select at least one tool covered by the subscription.'); return }
+                        void onSave({ ...sub, tools: selected })
+                      }} />
+                      {tool.name}
+                    </label>)}
+                    <Button variant="ghost" size="sm" disabled={saving} onClick={() => onSave(sub, false)}><Trash2 size={14} /> Stop Tracking</Button>
+                  </div>}
 
                   {isCustom && (
                     <div style={{
@@ -466,7 +561,7 @@ function SubscriptionSettings({
                           Custom price: {fmtCurrency(sub.customPrice!)}/mo (overrides catalog)
                         </span>
                       </div>
-                      <Button variant="ghost" size="sm" onClick={() => handleTierChange(catalog.id, activeTier.id)}>
+                      <Button variant="ghost" size="sm" disabled={saving} onClick={() => handleTierChange(catalog.id, activeTier.id)}>
                         Reset to Catalog
                       </Button>
                     </div>
@@ -494,6 +589,7 @@ function SubscriptionSettings({
                 <li>One subscription shared across tools (e.g., ChatGPT via Codex + OpenCode) counts only once</li>
                 <li>Custom prices let you enter your actual invoice amount (taxes, discounts, etc.)</li>
                 <li>Model-cost estimates remain separate from real subscription spending</li>
+                <li>Stop Tracking ends future counting; it does not cancel your provider’s subscription</li>
               </ul>
             </div>
           </div>
@@ -504,43 +600,17 @@ function SubscriptionSettings({
 }
 
 function PluginSettings() {
-  const plugins = [
-    {
-      id: 'opencode',
-      name: 'OpenCode',
-      icon: '⌨️',
-      description: 'Official OpenCode plugin using session.usage.updated events',
-      status: 'ready',
-      install: 'opencode plugin install github.com/Joosibaeri/burnyourmoneywithslop/plugins/opencode',
-    },
-    {
-      id: 'claude-code',
-      name: 'Claude Code',
-      icon: '🤖',
-      description: 'Hook-based plugin using Stop event with OpenTelemetry export',
-      status: 'ready',
-      install: 'Copy .claude-plugin/ to ~/.claude/plugins/burnyourmoneywithslop/',
-    },
-    {
-      id: 'cursor',
-      name: 'Cursor',
-      icon: '📝',
-      description: 'Hook plugin using sessionEnd event to capture conversation metrics',
-      status: 'ready',
-      install: 'Copy .cursor-plugin/ to ~/.cursor/plugins/local/burnyourmoneywithslop/',
-    },
-    {
-      id: 'codex',
-      name: 'Codex',
-      icon: '💬',
-      description: 'Hook plugin using PostModelRequest to capture token_usage per attempt',
-      status: 'ready',
-      install: 'Add hooks to ~/.codex/hooks.json or .codex/hooks.json',
-    },
-  ]
+  const plugins = COLLECTORS
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 20 }}>
+    <div>
+      <Card style={{ marginBottom: 24 }}><CardHeader><CardTitle>Sign in once per machine</CardTitle><CardDescription>Use Node.js 22 or newer. Run the commands below from your clone.</CardDescription></CardHeader><CardContent>
+        <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 16 }}>{COLLECTOR_QUICKSTART}</pre>
+        <p>Collector sign-in is separate from the website. Credentials are stored in a private local directory and refresh automatically. No OAuth secrets, prompts, code or transcripts belong in tool configuration.</p>
+        <p style={{ marginTop: 12 }}><code>npm run collector -- status</code> checks local sign-in; <code>npm run collector -- flush</code> retries queued metrics. Merge generated configuration snippets—never overwrite unrelated settings.</p>
+        <a href="https://github.com/Joosibaeri/burnyourmoneywithslop/blob/master/docs/PLUGIN_INSTALL.md" target="_blank" rel="noopener noreferrer">Full installation and verification guide</a>
+      </CardContent></Card>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 20 }}>
       {plugins.map(plugin => (
         <Card key={plugin.id}>
           <CardHeader>
@@ -562,12 +632,10 @@ function PluginSettings() {
           <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Badge
-                variant={plugin.status === 'ready' ? 'success' : plugin.status === 'beta' ? 'info' : 'default'}
+                variant={plugin.id === 'cursor' ? 'info' : 'default'}
                 size="sm"
               >
-                {plugin.status === 'ready' && 'Ready to Install'}
-                {plugin.status === 'beta' && 'Beta'}
-                {plugin.status === 'planned' && 'Planned'}
+                {plugin.mode}
               </Badge>
             </div>
             <div style={{
@@ -580,14 +648,16 @@ function PluginSettings() {
               color: 'var(--fg-muted)',
               overflow: 'auto',
             }}>
-              {plugin.install}
+              <code>{plugin.command}</code>
             </div>
-            <Button variant="outline" style={{ justifyContent: 'center' }}>
-              <ExternalLink size={16} /> View Plugin Code
-            </Button>
+            <p style={{ color: 'var(--fg-muted)', fontSize: '0.8125rem' }}>{plugin.target}</p>
+            <a href={`https://github.com/Joosibaeri/burnyourmoneywithslop/tree/master/plugins/${plugin.id}`} target="_blank" rel="noopener noreferrer">
+              <Button variant="outline" style={{ justifyContent: 'center' }}><ExternalLink size={16} /> View Collector Code</Button>
+            </a>
           </CardContent>
         </Card>
       ))}
+    </div>
     </div>
   )
 }

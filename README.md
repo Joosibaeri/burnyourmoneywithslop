@@ -1,206 +1,126 @@
 # Burn Your Money With Slop
 
-> Compare AI coding usage with friends: tokens, actual spending, and private groups. Plugins for Codex, Claude Code, Cursor, and OpenCode.
+Compare AI coding tokens and recorded subscription spending with friends. Public GitHub identities and statistics, consent-based private groups, and metrics-only collectors.
 
-[![Deploy to GitHub Pages](https://github.com/Joosibaeri/burnyourmoneywithslop/actions/workflows/deploy.yml/badge.svg)](https://github.com/Joosibaeri/burnyourmoneywithslop/actions/workflows/deploy.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Deploy](https://github.com/Joosibaeri/burnyourmoneywithslop/actions/workflows/deploy.yml/badge.svg)](https://github.com/Joosibaeri/burnyourmoneywithslop/actions/workflows/deploy.yml)
 
-## Live Demo
+**Website:** https://howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz
 
-**https://burnyourmoneywithslop.joosibaeri.xyz** (configured via GitHub Pages + custom domain)
+## Start tracking
 
----
+1. Sign in on the website with GitHub.
+2. In **Settings → Subscriptions**, select plans you actually pay for. Enter your monthly invoice amount/share when the catalogue price isn't right.
+3. Install collectors on each machine with Node.js **22 or newer**:
 
-## Features
-
-- **Real Subscription Costs**: Track actual monthly spending on AI subscriptions (Claude Pro, Cursor, ChatGPT Plus, etc.)
-- **Token Usage**: Monitor input/output/reasoning/cache tokens across all tools
-- **Private Groups**: Create invite-only groups to compare usage with friends
-- **Multi-Tool Support**: Plugins for OpenCode, Claude Code, Cursor, and Codex
-- **Privacy-First**: Only token totals sent — never prompts, code, or transcripts
-- **Supabase Backend**: Real-time sync, auth, and PostgreSQL with RLS
-- **GitHub Pages Hosting**: Free static hosting with custom domain support
-
----
-
-## Quick Start (Demo Mode)
-
-No setup required to explore the UI:
-
-```bash
-git clone https://github.com/Joosibaeri/burnyourmoneywithslop
+```sh
+git clone https://github.com/Joosibaeri/burnyourmoneywithslop.git
 cd burnyourmoneywithslop
-npm install
-npm run dev
+npm ci
+npm run collectors:build
+npm run collector -- login
 ```
 
-Open http://localhost:5173 — works immediately with mock data.
+Collector login opens GitHub in your browser and saves a separate refreshable Supabase session privately on your machine. Friends don't need their own Supabase project, privileged key, or OAuth secret.
 
----
+Generate a tool-specific configuration snippet, then **merge** it into your existing configuration:
 
-## Production Setup
-
-### 1. Supabase Backend
-
-Follow the complete guide: [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md)
-
-Quick steps:
-1. Create Supabase project
-2. Enable GitHub OAuth provider
-3. Run migrations: `supabase db push --remote --yes`
-4. Deploy Edge Function: `supabase functions deploy ingest-usage --remote --yes`
-5. Add credentials to GitHub repo secrets (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`)
-
-### 2. Custom Domain
-
-Configure `burnyourmoneywithslop.joosibaeri.xyz`: [docs/CUSTOM_DOMAIN.md](docs/CUSTOM_DOMAIN.md)
-
-### 3. Install Plugins
-
-Track real usage from your AI tools: [docs/PLUGIN_INSTALL.md](docs/PLUGIN_INSTALL.md)
-
----
-
-## Architecture
-
-```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│   AI Tools      │     │  Burn Your Money │     │    Supabase     │
-│                 │     │  With Slop       │     │                 │
-│  • OpenCode     │────▶│  (React + Vite)  │────▶│  • PostgreSQL   │
-│  • Claude Code  │     │  • Dashboard     │     │  • Auth (GitHub)│
-│  • Cursor       │     │  • Groups        │     │  • Edge Functions│
-│  • Codex        │     │  • Subscriptions │     │  • Storage      │
-└─────────────────┘     └──────────────────┘     └─────────────────┘
-                              ▲
-                              │ GitHub Pages
-                              ▼
-                    ┌──────────────────┐
-                    │  Custom Domain   │
-                    │  burnyourmoney-  │
-                    │  withslop.joos-  │
-                    │  ibaeri.xyz      │
-                    └──────────────────┘
+```sh
+npm run --silent collector -- config --tool opencode
+npm run --silent collector -- config --tool claude-code
+npm run --silent collector -- config --tool codex
 ```
 
----
+See [the installation guide](docs/PLUGIN_INSTALL.md) for configuration locations, hook trust, supported versions, Cursor imports, and verification. These packages are built from this repository; they are **not published npm packages**.
 
-## Plugin Data Flow
+## Supported collection
 
-Each plugin captures usage locally and sends only aggregated metrics:
+| Tool | Source | Important limits |
+| --- | --- | --- |
+| OpenCode V2 | Ordered `session.step.started`, `.ended`, `.failed` events | Live steps only; exact dispatched model retained; cumulative session totals ignored |
+| Claude Code | Local assistant/subagent transcript counters via Stop, StopFailure, SubagentStop, SessionStart and SessionEnd | Best-effort transcript snapshots can lag; explicit local imports recover late entries |
+| Codex | Paired synchronous PreModelRequest/PostModelRequest hooks, background Stop upload | One durable identity per live attempt, including retries and subagents; not arbitrary historical hook replay |
+| Cursor | Documented `/v2/teams/billing-items` JSON exports | Explicit importing-user filter; requires a Team API export; ordinary dashboard CSVs and transcripts aren't guessed |
 
-| Tool | Hook/Event | Data Sent |
-|------|------------|-----------|
-| OpenCode | `session.usage.updated`, `session.step.ended` | Tokens, cost, model, session ID |
-| Claude Code | `Stop`, `SessionEnd` (via transcript) | Tokens, cost, model, conversation ID |
-| Cursor | `sessionEnd` (via transcript) | Tokens, cost, model, conversation ID |
-| Codex | `PostModelRequest`, `SessionEnd` | Tokens, cost, model, session ID |
+Retries use stable opaque event IDs and never add usage twice. Identical genuine requests remain separate. Input/cache and output/reasoning counters are disjoint; reasoning already included in a provider's output counter isn't counted again.
 
-**Never sent:** Prompts, code, file contents, transcripts, or any user data.
-
----
-
-## Subscription Cost Model
-
-- **Real costs**: Monthly subscription fees (Claude Pro $20, Cursor Premium $30, etc.)
-- **Shared subscriptions**: One ChatGPT Plus used via Codex + OpenCode = counted once/month
-- **Custom prices**: Override catalog prices for taxes, discounts, or actual invoices
-- **Model estimates**: Separate from real spending, shown as "Estimated" in charts
-
----
-
-## Tech Stack
-
-- **Frontend**: React 19, TypeScript, Vite 6, Recharts
-- **Backend**: Supabase (PostgreSQL, Auth, Edge Functions, Storage)
-- **Hosting**: GitHub Pages with custom domain
-- **Plugins**: Native integrations for each AI tool
-- **CI/CD**: GitHub Actions
-
----
-
-## Project Structure
-
-```
-burnyourmoneywithslop/
-├── src/                    # React frontend
-│   ├── components/         # UI components
-│   ├── contexts/           # React contexts (Auth, Supabase)
-│   ├── lib/                # Utilities, mock data
-│   └── pages/              # Page components
-├── supabase/
-│   ├── migrations/         # Database schema
-│   ├── functions/          # Edge Functions
-│   └── config.toml         # Supabase CLI config
-├── plugins/
-│   ├── opencode/           # OpenCode server plugin
-│   ├── claude-code/        # Claude Code hook plugin
-│   ├── cursor/             # Cursor hook plugin
-│   └── codex/              # Codex hook plugin
-├── docs/                   # Setup guides
-├── .github/workflows/      # CI/CD
-└── public/                 # Static assets (CNAME, favicon)
+```sh
+npm run collector -- status
+npm run collector -- flush
+npm run collector -- logout
 ```
 
----
+Failed uploads stay in a private, account-scoped local queue. Logging into another account does not upload the previous account's queue. Logout revokes the collector session, not the website's session, and leaves pending metrics private on disk.
+
+## Spending model
+
+- **Real spending** is your recorded subscription/invoice price, not an inferred API bill. You select the paid plans and may override their prices, including tax, discounts, additional charges, or your share of a team invoice.
+- A subscription shared across tools counts **once per user per UTC calendar month with relevant recorded usage**. Group totals sum each member independently.
+- Selections and price edits apply to the **current UTC calendar month**. Older subscription records are retained. Stopping tracking does not cancel a provider subscription.
+- Catalogue prices are monthly USD prices; use a monthly-equivalent amount for annual plans. For shared team invoices, record your share—not the full invoice on every member's account.
+- **Model estimates** remain separate. OpenCode/Cursor reported model costs and Claude/Codex standard token-price estimates are not actual invoice charges. Unknown models and hidden Cursor costs are marked unavailable, and the UI labels estimates as partial.
+- Speed/residency premiums, discounts, tools, prepaid top-ups and API charges are not automatically reconciled. Add actual billed amounts through your invoice-price override if appropriate. This is a self-reported comparison dashboard, not a financial statement.
+
+The catalogue includes Claude Pro/Max, ChatGPT allowance tiers, current and legacy Cursor plans, and OpenCode's free client, Go, Go Plus and Go Teams. A free client does **not** mean its paid API usage is free. Prices were checked on **2026-11-18**; provider limits and prices can change.
+
+## Privacy and groups
+
+- Uploaded usage contains only token counters, an estimated/reported model cost and its source, model identifier, timestamp, and opaque hashed event/session IDs. **No prompts, code, file contents, transcripts, repository paths or GitHub provider tokens are uploaded.** Claude reads existing transcripts locally; it does not copy or modify them.
+- GitHub name, username and avatar are public. Aggregate statistics are public **by default**; disable public statistics in Settings to share them only with yourself and groups you joined.
+- Raw events and subscription records are owner-only. Receipt storage is private and owner-scoped; receipt contents are never part of public statistics.
+- Creating a group enrolls its creator only. Friends must sign in and explicitly confirm joining via an invitation link. Owners cannot enroll arbitrary users or rewrite membership identities.
+- Keep invitation links private. Anyone who has one can choose to join; no email/GitHub notification is sent automatically.
+- Publishable/legacy anon keys are public client configuration. **Secret/service-role keys and GitHub OAuth secrets must never be put in frontend or collector configuration.**
 
 ## Development
 
-```bash
-# Install dependencies
-npm install
-
-# Start dev server
-npm run dev
-
-# Run tests
-npm test
-
-# Type check
-npx tsc --noEmit
-
-# Lint
-npm run lint
-
-# Build for production
-npm run build
-
-# Preview production build
+```sh
+npm ci
+npm run dev                 # http://localhost:5173
+npm run typecheck           # website, Vite config and every collector
+npm run lint                # website lint checks
+npm test -- --reporter=dot  # collector fixtures, PKCE, billing and Postgres/RLS tests
+npm run build              # website + collector bundles
 npm run preview
+deno check --frozen --config supabase/functions/ingest-usage/deno.json supabase/functions/ingest-usage/index.ts
 ```
 
----
+Without frontend configuration, local development uses clearly labelled sample data. To use the hosted project, put its **public** configuration in untracked `.env.local`:
 
-## Deployment
+```dotenv
+VITE_SUPABASE_URL=https://skvbxlhnjnksmzdnchlu.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
+```
 
-Push to `master` branch triggers GitHub Actions workflow:
-1. Builds React app with Vite
-2. Deploys to `gh-pages` branch
-3. GitHub Pages serves from `gh-pages` branch
-4. Custom domain `burnyourmoneywithslop.joosibaeri.xyz` resolves via CNAME
+`VITE_SUPABASE_ANON_KEY` is supported as a legacy fallback. Deployment-managed configuration cannot be overridden by browser storage. The Vite build publishes `collector-config.json` containing public configuration only, plus `/auth/callback/index.html` and a SPA `404.html`.
 
----
+Database tests execute the actual migration in local Postgres/WASM (PGlite), including RLS, consent, deduplication and monthly billing. Docker-backed Supabase development is optional and requires access to Docker.
 
-## Contributing
+### Dependency audit
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
+As of 2026-11-18, `npm audit --omit=dev` is clean. The full development tree still reports 24 moderate advisories inherited through the pinned OpenCode SDK/npm toolchain (not the deployed browser bundle). Safe audit remediation was previewed; no forced downgrades or incompatible glob/minimatch overrides were applied. Recheck upstream fixes before upgrading.
 
----
+## Deployment and remaining administration
 
-## License
+Pushes to `master` run tests, build, and deploy a Pages artifact through **GitHub Actions**. This is **not** a `gh-pages` branch deployment. Only the website is deployed by that workflow; Supabase migrations and ingestion are deployed separately with the pinned CLI.
 
-MIT License - see [LICENSE](LICENSE) for details.
+- [Supabase and exact GitHub OAuth setup](docs/SUPABASE_SETUP.md)
+- [Custom domain, DNS and HTTPS](docs/CUSTOM_DOMAIN.md)
+- [Collector installation and imports](docs/PLUGIN_INSTALL.md)
+- [Deployment checks and remaining manual steps](docs/DEPLOYMENT_STATUS.md)
 
----
+GitHub OAuth credentials must be registered with GitHub and saved in **Supabase Auth → Providers → GitHub**. A valid custom-domain certificate is required before production website sign-in. Never bypass TLS verification to make login work.
 
-## Links
+## Layout
 
-- **Live Site**: https://burnyourmoneywithslop.joosibaeri.xyz
-- **Repository**: https://github.com/Joosibaeri/burnyourmoneywithslop
-- **Supabase Setup**: [docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md)
-- **Custom Domain**: [docs/CUSTOM_DOMAIN.md](docs/CUSTOM_DOMAIN.md)
-- **Plugin Install**: [docs/PLUGIN_INSTALL.md](docs/PLUGIN_INSTALL.md) 
+```text
+src/                          React website, billing helpers and UI tests
+plugins/shared/               Private credentials, locking, metrics and transport
+plugins/collector/            Browser PKCE login and configuration CLI
+plugins/{opencode,claude-code,codex,cursor}/
+supabase/migrations/          Schema, RLS, controlled aggregates and billing history
+supabase/functions/ingest-usage/  Caller-authenticated ingestion
+deploy/production/supabase/   Partial hosted Auth configuration
+docs/                         Setup and verification guides
+```
+
+MIT — see [LICENSE](LICENSE). Repository and website remain public.

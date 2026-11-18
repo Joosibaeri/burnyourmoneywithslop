@@ -1,37 +1,8 @@
 {
   "name": "burnyourmoneywithslop",
   "version": "0.1.0",
-  "description": "Burn Your Money With Slop - Claude Code plugin for usage tracking via OpenTelemetry",
-  "author": {
-    "name": "Joosibaeri"
-  },
+  "description": "Metrics-only token collection from local assistant and subagent transcripts",
+  "author": { "name": "Joosibaeri" },
   "license": "MIT",
-  "hooks": "./hooks/hooks.json",
-  "mcpServers": {
-    "burnyourmoneywithslop": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/mcp-server.js"],
-      "env": {
-        "SUPABASE_URL": "${user_config.supabase_url}",
-        "SUPABASE_ANON_KEY": "${user_config.supabase_anon_key}",
-        "OTEL_EXPORTER_OTLP_ENDPOINT": "http://localhost:4318/v1/metrics",
-        "OTEL_METRICS_EXPORTER": "otlp"
-      }
-    }
-  },
-  "userConfig": {
-    "supabase_url": {
-      "type": "string",
-      "title": "Supabase URL",
-      "description": "Your Supabase project URL (e.g., https://xxx.supabase.co)",
-      "required": true
-    },
-    "supabase_anon_key": {
-      "type": "string",
-      "title": "Supabase Anon Key",
-      "description": "Your Supabase publishable/anon key",
-      "required": true,
-      "sensitive": true
-    }
-  }
+  "hooks": "./hooks/hooks.json"
 }

@@ -1,0 +1,16 @@
+project_id = "burnyourmoneywithslop"
+
+# Only these settings are pushed; unrelated hosted settings stay unchanged.
+[auth]
+site_url = "https://howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz"
+additional_redirect_urls = [
+  "https://howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz/auth/callback",
+  "http://localhost:5173/auth/callback",
+  "http://127.0.0.1:5173/auth/callback",
+  "http://127.0.0.1:48173/auth/callback/*"
+]
+enable_anonymous_sign_ins = false
+
+# This application authenticates through GitHub, not email/password.
+[auth.email]
+enabled = false

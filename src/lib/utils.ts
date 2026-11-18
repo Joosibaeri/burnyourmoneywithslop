@@ -2,7 +2,7 @@ export function formatNumber(num: number): string {
   if (num >= 1e12) return (num / 1e12).toFixed(1) + 'T'
   if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B'
   if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M'
-  if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K'
+  if (num >= 1e3) return (num / 1e3).toFixed(1).replace(/\.0$/, '') + 'K'
   return num.toLocaleString()
 }
 
@@ -96,12 +96,12 @@ export function getSubscriptionCatalog() {
   return [
     {
       id: 'claude-pro',
-      name: 'Claude Pro',
+      name: 'Claude',
       provider: 'Anthropic',
       tiers: [
-        { id: 'pro', name: 'Pro', price: 20, features: ['5x usage', 'Projects', 'Claude Code access'] },
-        { id: 'max', name: 'Max', price: 100, features: ['5x Pro usage', '$100 API credits', 'Priority access'] },
-        { id: 'ultra', name: 'Ultra', price: 200, features: ['10x Pro usage', '$200 API credits', 'No 5-hour limit'] },
+        { id: 'pro', name: 'Pro', price: 20, features: ['Claude Code access', 'Provider usage limits apply'] },
+        { id: 'max', name: 'Max (5x)', price: 100, features: ['5x Pro usage', 'API usage billed separately'] },
+        { id: 'ultra', name: 'Max (20x)', price: 200, features: ['20x Pro usage', 'Provider usage limits apply'] },
       ],
     },
     {
@@ -109,10 +109,15 @@ export function getSubscriptionCatalog() {
       name: 'Cursor',
       provider: 'Anysphere',
       tiers: [
-        { id: 'plus', name: 'Plus', price: 8, features: ['Shared AI pool', 'Grok models'] },
-        { id: 'premium', name: 'Premium', price: 30, features: ['4x Plus usage', 'Third-party models', 'Cloud agents'] },
-        { id: 'super', name: 'Super', price: 100, features: ['15x Plus usage', 'Priority model access'] },
-        { id: 'ultra', name: 'Ultra', price: 200, features: ['50x Plus usage', 'Earliest access'] },
+        { id: 'free', name: 'Free', price: 0, features: ['Limited Cursor-model usage'] },
+        { id: 'plus', name: 'Plus', price: 8, features: ['The X Subscription', 'Weekly Cursor/Grok pool', 'No third-party models'] },
+        { id: 'premium', name: 'Premium', price: 30, features: ['4x Plus weekly pool', 'Third-party models paid from prepaid credit'] },
+        { id: 'super', name: 'Super', price: 100, features: ['15x Plus weekly pool', 'Third-party models paid separately'] },
+        { id: 'ultra', name: 'Ultra', price: 200, features: ['50x Plus weekly pool', 'Third-party models paid separately'] },
+        { id: 'pro', name: 'Legacy Pro', price: 20, features: ['Existing legacy subscribers', 'Monthly usage pools'] },
+        { id: 'pro-plus', name: 'Legacy Pro+', price: 60, features: ['Existing legacy subscribers', 'Monthly usage pools'] },
+        { id: 'teams-standard', name: 'Legacy Teams Standard', price: 40, features: ['Per paid seat', 'Monthly usage pools'] },
+        { id: 'teams-premium', name: 'Legacy Teams Premium', price: 120, features: ['Per paid seat', 'Monthly usage pools'] },
       ],
     },
     {
@@ -121,9 +126,9 @@ export function getSubscriptionCatalog() {
       provider: 'OpenAI',
       tiers: [
         { id: 'plus', name: 'Plus', price: 20, features: ['Priority access', 'Higher limits', 'Advanced reasoning'] },
-        { id: 'pro-100', name: 'Pro 100', price: 100, features: ['More Work/Codex', '2x allowance'] },
-        { id: 'pro-200', name: 'Pro 200', price: 200, features: ['Even more usage', 'Updated allowance'] },
-        { id: 'pro-500', name: 'Pro 500', price: 500, features: ['Ultrafast models', 'Highest usage'] },
+        { id: 'pro-100', name: 'Pro 100', price: 100, features: ['Work/Codex allowance tier', 'API usage billed separately'] },
+        { id: 'pro-200', name: 'Pro 200', price: 200, features: ['Work/Codex allowance tier', 'Provider limits apply'] },
+        { id: 'pro-500', name: 'Pro 500', price: 500, features: ['Work/Codex allowance tier', 'Provider limits apply'] },
       ],
     },
     {
@@ -131,7 +136,10 @@ export function getSubscriptionCatalog() {
       name: 'OpenCode',
       provider: 'OpenCode',
       tiers: [
-        { id: 'free', name: 'Free', price: 0, features: ['Unlimited local usage', 'All models via API keys'] },
+        { id: 'free', name: 'Free client', price: 0, features: ['Open-source client', 'Paid APIs billed separately'] },
+        { id: 'go', name: 'Go', price: 10, features: ['Optional model subscription', '5-hour, weekly and monthly limits'] },
+        { id: 'go-plus', name: 'Go Plus', price: 40, features: ['Higher model usage limits', 'Extra usage billed separately'] },
+        { id: 'go-teams', name: 'Go Teams (per seat)', price: 20, features: ['2-member / $40 workspace minimum', 'Enter your own invoice share'] },
       ],
     },
   ]
@@ -139,7 +147,7 @@ export function getSubscriptionCatalog() {
 
 export const SUBSCRIPTION_CATALOG = getSubscriptionCatalog()
 
-export function calculateMonthlySubscriptionCost(subscriptions: Array<{ catalogId: string; tierId: string }>): number {
+export function calculateMonthlySubscriptionCost(subscriptions: Array<{ catalogId: string; tierId: string; customPrice?: number }>): number {
   let total = 0
   const seenTools = new Set<string>()
 
@@ -154,7 +162,7 @@ export function calculateMonthlySubscriptionCost(subscriptions: Array<{ catalogI
     if (seenTools.has(toolKey)) continue
 
     seenTools.add(toolKey)
-    total += tier.price
+    total += sub.customPrice ?? tier.price
   }
 
   return total

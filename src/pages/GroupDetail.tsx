@@ -1,24 +1,33 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { useSupabase } from '@/contexts/SupabaseContext'
+import { useGroups } from '@/hooks/useGroups'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { Input } from '@/components/ui/Input'
-import { ArrowLeft, Users, DollarSign, Activity, TrendingUp, Share2, Copy, Check, Trash2, UserPlus, Mail } from 'lucide-react'
+import { ArrowLeft, Users, DollarSign, Activity, TrendingUp, Share2, Copy, Check, Trash2, UserPlus } from 'lucide-react'
 import { useState } from 'react'
-import { getMockGroups, formatNumber, formatCurrency } from '@/lib/utils'
+import { formatNumber, formatCurrencyPrecise as formatCurrency } from '@/lib/utils'
+import { getDemoGroups, setDemoGroups, type GroupData } from '@/lib/data'
 
 export function GroupDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const groups = getMockGroups()
+  const { supabase, isDemoMode } = useSupabase()
+  const { groups, loading, error, reload } = useGroups(id)
   const group = groups.find(g => g.id === id)
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
+  if (loading) return <p role="status">Loading group…</p>
+  if (error) return <Card><p role="alert">Could not load group: {error}</p><Button onClick={reload}>Retry</Button></Card>
   if (!group) {
     return (
       <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-        <h1 style={{ fontSize: '2rem', marginBottom: 16 }}>Group not found</h1>
+        <h1 style={{ fontSize: '2rem', marginBottom: 16 }}>Group not found or membership required</h1>
         <Button variant="outline" onClick={() => navigate('/groups')}>
           <ArrowLeft size={18} /> Back to Groups
         </Button>
@@ -27,26 +36,57 @@ export function GroupDetail() {
   }
 
   const isMember = group.members.some(m => m.id === user?.id)
+  const isOwner = group.ownerId === user?.id
   const sortedMembers = [...group.members].sort((a, b) => b.spent - a.spent)
-  const [showInviteModal, setShowInviteModal] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [copiedLink, setCopiedLink] = useState(false)
 
-  const inviteLink = `${window.location.origin}/invite/${group.id}`
+  const inviteLink = `${window.location.origin}/invite/${encodeURIComponent(group.inviteCode ?? '')}`
 
   const handleCopyLink = async () => {
-    await navigator.clipboard.writeText(inviteLink)
-    setCopiedLink(true)
-    setTimeout(() => setCopiedLink(false), 2000)
+    try {
+      await navigator.clipboard.writeText(inviteLink)
+      setCopiedLink(true)
+      setActionError(null)
+    } catch { setActionError('Could not copy the link. Select and copy it manually below.') }
   }
 
-  const handleInvite = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!inviteEmail.trim()) return
-    // TODO: Send invite via Supabase
-    console.log('Inviting:', inviteEmail)
-    setShowInviteModal(false)
-    setInviteEmail('')
+  const handleShare = async () => {
+    if (!navigator.share) { await handleCopyLink(); return }
+    try { await navigator.share({ title: group.name, url: inviteLink }) }
+    catch (err) { if (!(err instanceof DOMException && err.name === 'AbortError')) setActionError('Could not share the invitation.') }
+  }
+
+  const removeMember = async (memberId: string) => {
+    if (!window.confirm(memberId === user?.id ? 'Leave this group and stop sharing private statistics with its members?' : 'Remove this member from the group?')) return
+    setSaving(true)
+    setActionError(null)
+    try {
+      if (isDemoMode) {
+        setDemoGroups(getDemoGroups().map(g => g.id === group.id ? { ...g, members: g.members.filter(m => m.id !== memberId), memberCount: g.memberCount - 1 } : g))
+      } else {
+        const { data, error: deleteError } = await supabase.from('group_members').delete()
+          .eq('group_id', group.id).eq('user_id', memberId).select('user_id')
+        if (deleteError) throw new Error(deleteError.message)
+        if (!data?.length) throw new Error('The membership could not be removed.')
+      }
+      if (memberId === user?.id) navigate('/groups')
+      else reload()
+    } catch (err) { setActionError(err instanceof Error ? err.message : 'Could not remove member.') }
+    finally { setSaving(false) }
+  }
+
+  const deleteGroup = async () => {
+    if (!isOwner || !window.confirm(`Permanently delete “${group.name}” and its memberships? Usage records will not be deleted.`)) return
+    setSaving(true)
+    try {
+      if (isDemoMode) setDemoGroups(getDemoGroups().filter(g => g.id !== group.id))
+      else {
+        const { data, error: deleteError } = await supabase.from('groups').delete().eq('id', group.id).select('id')
+        if (deleteError) throw new Error(deleteError.message)
+        if (!data?.length) throw new Error('The group could not be deleted.')
+      }
+      navigate('/groups')
+    } catch (err) { setActionError(err instanceof Error ? err.message : 'Could not delete group.') }
+    finally { setSaving(false) }
   }
 
   return (
@@ -61,6 +101,9 @@ export function GroupDetail() {
         </div>
       </div>
 
+      {actionError && <p role="alert" style={{ marginBottom: 20, color: 'var(--danger)' }}>{actionError}</p>}
+      {isDemoMode && <p style={{ marginBottom: 20, color: 'var(--fg-muted)' }}>Demo group; no changes are sent to Supabase.</p>}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 24 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           <Card>
@@ -71,10 +114,10 @@ export function GroupDetail() {
                   <CardDescription>Ranked by total spending this month</CardDescription>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={handleShare}>
                     <Share2 size={16} /> Share
                   </Button>
-                  <Button variant="outline" size="sm" onClick={handleCopyLink}>
+                  <Button variant="outline" size="sm" onClick={handleCopyLink} aria-label="Copy invitation link">
                     {copiedLink ? <Check size={16} style={{ color: 'var(--success)' }} /> : <Copy size={16} />}
                   </Button>
                 </div>
@@ -91,7 +134,7 @@ export function GroupDetail() {
               <CardDescription>Spending trends across the group</CardDescription>
             </CardHeader>
             <CardContent>
-              <GroupTrendChart members={group.members} />
+              <GroupTrendChart members={group.members} trend={group.trend ?? []} />
             </CardContent>
           </Card>
         </div>
@@ -112,7 +155,7 @@ export function GroupDetail() {
               </div>
             </CardHeader>
             <CardContent>
-              <MemberList members={group.members} currentUserId={user?.id || '1'} isOwner={group.members[0].id === user?.id} />
+              <MemberList members={group.members} currentUserId={user?.id || ''} ownerId={group.ownerId} isOwner={isOwner} onRemove={removeMember} saving={saving} />
             </CardContent>
           </Card>
 
@@ -160,32 +203,22 @@ export function GroupDetail() {
               </CardContent>
             </Card>
           )}
+          {isOwner ? <Button variant="danger" onClick={deleteGroup} disabled={saving}>Delete Group</Button>
+            : isMember && <Button variant="outline" onClick={() => user && removeMember(user.id)} disabled={saving}>Leave Group</Button>}
         </div>
       </div>
 
       {showInviteModal && (
         <Modal onClose={() => setShowInviteModal(false)} title="Invite Member">
-          <form onSubmit={handleInvite} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <p style={{ color: 'var(--fg-muted)', fontSize: '0.875rem' }}>
-              Enter their GitHub username or email. They'll get a notification to join.
+              Share this private invitation link yourself. Your friend signs in with GitHub and confirms before joining. No email or GitHub notification is sent.
             </p>
-            <Input
-              label="GitHub Username or Email"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              placeholder="@username or email@example.com"
-              required
-              autoFocus
-            />
+            <input aria-label="Invitation link" value={inviteLink} readOnly onFocus={event => event.target.select()} style={{ width: '100%', padding: 12 }} />
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 8 }}>
-              <Button type="button" variant="secondary" onClick={() => setShowInviteModal(false)}>
-                Cancel
-              </Button>
-              <Button type="submit">
-                <Mail size={18} /> Send Invite
-              </Button>
+              <Button variant="outline" onClick={handleCopyLink}><Copy size={18} /> {copiedLink ? 'Copied!' : 'Copy Invite Link'}</Button>
             </div>
-          </form>
+          </div>
         </Modal>
       )}
     </div>
@@ -231,12 +264,12 @@ function Leaderboard({ members, currentUserId }: { members: Array<{ id: string; 
                 style={{ width: 32, height: 32, borderRadius: '50%' }}
               />
               <div>
-                <div style={{ fontWeight: 600, fontSize: '0.9375rem' }}>
-                  {member.name === 'you' ? 'You' : `@${member.login}`}
+                  <div style={{ fontWeight: 600, fontSize: '0.9375rem' }}>
+                   <Link to={`/@${member.login}`}>{member.name === 'you' ? 'You' : member.name}</Link>
                   {isCurrentUser && <Badge variant="accent" size="sm" style={{ marginLeft: 8 }}>You</Badge>}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--fg-subtle)' }}>
-                  {member.tools.length > 0 ? member.tools.join(', ') : 'No tools connected'}
+                   @{member.login} · {member.tools.length > 0 ? member.tools.join(', ') : 'No tools connected'}
                 </div>
               </div>
             </div>
@@ -257,69 +290,30 @@ function Leaderboard({ members, currentUserId }: { members: Array<{ id: string; 
   )
 }
 
-function GroupTrendChart({ members }: { members: Array<{ id: string; name: string; login: string; avatar: string; spent: number; tokens: number; tools: string[] }> }) {
+function GroupTrendChart({ members, trend }: { members: GroupData['members']; trend: NonNullable<GroupData['trend']> }) {
   const colors = ['var(--accent)', '#60a5fa', '#22c55e', '#c084fc', '#f97316', '#ef4444']
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
-  const maxSpent = Math.max(...members.flatMap(m => {
-    const base = m.spent / 6
-    return months.map(() => Math.floor(base * (0.7 + Math.random() * 0.6)))
-  }), 1)
+  if (!trend.length) return <p style={{ color: 'var(--fg-muted)' }}>No monthly usage recorded yet.</p>
+  const maxSpent = Math.max(...trend.flatMap(month => Object.values(month.values)), 1)
+  const xAt = (index: number) => 40 + index / Math.max(trend.length - 1, 1) * 500
 
   return (
-    <div style={{ height: 200, position: 'relative' }}>
-      <svg width="100%" height="100%">
-        <defs>
-          {members.slice(0, 5).map((member, i) => (
-            <linearGradient key={member.id} id={`trend-${member.id}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={colors[i]} stopOpacity={0.6} />
-              <stop offset="100%" stopColor={colors[i]} stopOpacity={0.1} />
-            </linearGradient>
-          ))}
-        </defs>
+    <div>
+      <svg width="100%" height="200" viewBox="0 0 580 200" aria-label="Group real spending by month">
         {members.slice(0, 5).map((member, memberIndex) => {
-          const base = member.spent / 6
-          const data = months.map((_, i) => Math.floor(base * (0.7 + Math.random() * 0.6) * (1 + i * 0.05)))
-          const points = data.map((val, i) => {
-            const x = 60 + (i / (months.length - 1)) * 400
-            const y = 200 - 30 - (val / maxSpent) * 150
-            return `${x},${y}`
-          }).join(' ')
+          const points = trend.map((month, index) => `${xAt(index)},${170 - (month.values[member.id] ?? 0) / maxSpent * 150}`).join(' ')
 
           return (
-            <g key={member.id} opacity={member.name === 'you' ? 1 : 0.7}>
-              <path
-                d={`M${points} L${points.split(' ').reverse().map((p) => {
-                  const [x] = p.split(',')
-                  const y = 170
-                  return `${x},${y}`
-                }).join(' ')} Z`}
-                fill={`url(#trend-${member.id})`}
-              />
-              <polyline
-                points={points}
-                fill="none"
-                stroke={colors[memberIndex]}
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+            <g key={member.id}>
+              <polyline points={points} fill="none" stroke={colors[memberIndex]} strokeWidth={2} />
+              {trend.map((month, index) => <circle key={month.month} cx={xAt(index)} cy={170 - (month.values[member.id] ?? 0) / maxSpent * 150} r={3} fill={colors[memberIndex]}>
+                <title>@{member.login}: {formatCurrency(month.values[member.id] ?? 0)} in {month.month}</title>
+              </circle>)}
             </g>
           )
         })}
-        {months.map((month, i) => {
-          const x = 60 + (i / (months.length - 1)) * 400
-          return (
-            <text key={month} x={x} y={185} textAnchor="middle" fill="var(--fg-subtle)" fontSize="11" fontFamily="Space Grotesk">
-              {month}
-            </text>
-          )
-        })}
+        {trend.map((month, index) => <text key={month.month} x={xAt(index)} y={193} textAnchor="middle" fill="var(--fg-subtle)" fontSize="10">{month.month}</text>)}
       </svg>
       <div style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
         display: 'flex',
         flexWrap: 'wrap',
         justifyContent: 'center',
@@ -338,7 +332,7 @@ function GroupTrendChart({ members }: { members: Array<{ id: string; name: strin
   )
 }
 
-function MemberList({ members, currentUserId, isOwner }: { members: Array<{ id: string; name: string; login: string; avatar: string; spent: number; tokens: number; tools: string[] }>; currentUserId: string; isOwner: boolean }) {
+function MemberList({ members, currentUserId, ownerId, isOwner, onRemove, saving }: { members: GroupData['members']; currentUserId: string; ownerId?: string; isOwner: boolean; onRemove: (memberId: string) => Promise<void>; saving: boolean }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {members.map((member) => {
@@ -363,16 +357,16 @@ function MemberList({ members, currentUserId, isOwner }: { members: Array<{ id: 
             />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontWeight: 500 }}>{member.name === 'you' ? 'You' : `@${member.login}`}</span>
+                <Link to={`/@${member.login}`} style={{ fontWeight: 500 }}>{member.name === 'you' ? 'You' : member.name}</Link>
                 {isCurrentUser && <Badge variant="accent" size="sm">You</Badge>}
-                {member.id === members[0].id && <Badge variant="info" size="sm">Owner</Badge>}
+                {member.id === ownerId && <Badge variant="info" size="sm">Owner</Badge>}
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--fg-subtle)' }}>
-                {member.tools.join(', ') || 'No tools connected'}
+                @{member.login} · {member.tools.join(', ') || 'No tools connected'}
               </div>
             </div>
             {!isCurrentUser && isOwner && (
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" onClick={() => onRemove(member.id)} disabled={saving} aria-label={`Remove @${member.login}`}>
                 <Trash2 size={16} />
               </Button>
             )}

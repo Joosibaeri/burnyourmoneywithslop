@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["shared/**/*.ts", "collector/src/**/*.ts", "opencode/src/**/*.ts", "claude-code/src/**/*.ts", "codex/src/**/*.ts", "cursor/src/**/*.ts"]
+}

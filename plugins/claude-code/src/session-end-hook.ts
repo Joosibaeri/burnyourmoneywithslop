@@ -1,32 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
-import { stdin as input, stdout as output } from 'node:process'
-import { createInterface } from 'node:readline/promises'
+import { runHook } from '../../shared/hook'
+import { collectClaudeUsage } from './transcript'
 
-interface SessionEndHookInput {
-  session_id: string
-  transcript_path: string
-  hook_event_name: 'SessionEnd'
-  reason: string
-  duration_ms: number
-  is_background_agent: boolean
-  final_status: string
-  error_message: string
-}
-
-async function main() {
-  const rl = createInterface({ input, output, terminal: false })
-
-  for await (const line of rl) {
-    try {
-      const inputData: SessionEndHookInput = JSON.parse(line)
-
-      // Could send a summary event here
-      console.log(JSON.stringify({}))
-    } catch (err) {
-      console.error('SessionEnd hook error:', err)
-      console.log(JSON.stringify({}))
-    }
-  }
-}
-
-main().catch(console.error)
+// SessionEnd has a shared 1.5s default budget. Queue locally, never wait on HTTP.
+await runHook(input => collectClaudeUsage(input, undefined, 150), { queueOnly: true })

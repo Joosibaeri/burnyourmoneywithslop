@@ -2,9 +2,31 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/Button'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
 import { Lock, Shield, BarChart2, DollarSign, GitBranch } from 'lucide-react'
+import { useState } from 'react'
+import { Navigate, useLocation } from 'react-router-dom'
+import { internalReturnTo } from '@/lib/auth-redirect'
 
 export function Login() {
-  const { signInWithGithub, loading } = useAuth()
+  const { signInWithGithub, loading, user } = useAuth()
+  const [error, setError] = useState<string | null>(null)
+  const [signingIn, setSigningIn] = useState(false)
+  const location = useLocation()
+  const returnTo = internalReturnTo(location.state?.returnTo)
+
+  if (user && !loading) return <Navigate to={returnTo} replace />
+
+  const handleSignIn = async () => {
+    setSigningIn(true)
+    setError(null)
+    try {
+      const { error: authError } = await signInWithGithub(returnTo)
+      if (authError) setError(authError.message)
+    } catch {
+      setError('Could not start GitHub sign-in. Please try again.')
+    } finally {
+      setSigningIn(false)
+    }
+  }
 
   return (
     <div style={{
@@ -42,13 +64,14 @@ export function Login() {
           </CardHeader>
           <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <Button
-              onClick={signInWithGithub}
-              disabled={loading}
-              loading={loading}
+              onClick={handleSignIn}
+              disabled={loading || signingIn}
+              loading={loading || signingIn}
               style={{ justifyContent: 'center' }}
             >
               <GitBranch size={20} /> Continue with GitHub
             </Button>
+            {error && <p role="alert" style={{ color: 'var(--danger)' }}>{error}</p>}
 
             <div style={{
               display: 'flex',
@@ -61,7 +84,7 @@ export function Login() {
             }}>
               <Lock size={20} color="var(--fg-subtle)" />
               <p style={{ color: 'var(--fg-muted)', fontSize: '0.875rem', margin: 0 }}>
-                By signing in, you agree to our <a href="#" style={{ color: 'var(--accent)' }}>Terms of Service</a> and <a href="#" style={{ color: 'var(--accent)' }}>Privacy Policy</a>.
+                GitHub identity and aggregate statistics are public by default; change visibility in Settings. Raw events, invoices and receipts stay private. <a href="https://github.com/Joosibaeri/burnyourmoneywithslop#privacy-and-groups" style={{ color: 'var(--accent)' }} target="_blank" rel="noopener noreferrer">Read privacy details</a>.
               </p>
             </div>
           </CardContent>
@@ -79,7 +102,7 @@ export function Login() {
         </div>
 
         <div style={{ marginTop: 32, textAlign: 'center', color: 'var(--fg-subtle)', fontSize: '0.8125rem' }}>
-          <p>Demo mode available — no account needed to explore</p>
+          <p><a href="https://github.com/Joosibaeri/burnyourmoneywithslop#development" target="_blank" rel="noopener noreferrer">Explore the local demo</a> — production uses GitHub sign-in.</p>
         </div>
       </div>
     </div>

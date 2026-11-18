@@ -1,88 +1,71 @@
 import { createContext, useContext, ReactNode, useState, useEffect, useCallback } from 'react'
 import { User, Session, AuthError } from '@supabase/supabase-js'
 import { useSupabase } from './SupabaseContext'
+import { AUTH_RETURN_TO, internalReturnTo } from '@/lib/auth-redirect'
 
 interface AuthContextValue {
   user: User | null
   session: Session | null
   loading: boolean
-  signInWithGithub: () => Promise<{ error: AuthError | null }>
+  signInWithGithub: (returnTo?: string) => Promise<{ error: AuthError | null }>
   signOut: () => Promise<void>
   refreshSession: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+function createDemoSession(): Session {
+  const user = { id: '2', email: 'demo@burnyourmoneywithslop.xyz',
+    user_metadata: { user_name: 'joosibaeri', full_name: 'Demo User', avatar_url: '' },
+    app_metadata: { provider: 'github' }, aud: 'authenticated', created_at: new Date().toISOString() } as User
+  return { access_token: 'demo-token', refresh_token: 'demo-refresh', expires_in: 3600,
+    expires_at: Math.floor(Date.now() / 1000) + 3600, token_type: 'bearer', user }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { supabase, isDemoMode } = useSupabase()
-  const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [session, setSession] = useState<Session | null>(() => isDemoMode ? createDemoSession() : null)
+  const [user, setUser] = useState<User | null>(() => session?.user ?? null)
+  const [loading, setLoading] = useState(!isDemoMode)
 
   useEffect(() => {
-    if (isDemoMode) {
-      const demoUser: User = {
-        id: 'demo-user-1',
-        email: 'demo@burnyourmoneywithslop.xyz',
-        user_metadata: { full_name: 'Demo User', avatar_url: '' },
-        app_metadata: { provider: 'github' },
-        aud: 'authenticated',
-        created_at: new Date().toISOString(),
-      } as User
-      const demoSession: Session = {
-        access_token: 'demo-token',
-        refresh_token: 'demo-refresh',
-        expires_in: 3600,
-        expires_at: Math.floor(Date.now() / 1000) + 3600,
-        token_type: 'bearer',
-        user: demoUser,
-      }
-      setUser(demoUser)
-      setSession(demoSession)
-      setLoading(false)
-      return
-    }
+    if (isDemoMode) return
 
-    const initAuth = async () => {
-      const { data: { session: initialSession } } = await supabase.auth.getSession()
+    let active = true
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (active) {
+        setSession(newSession)
+        setUser(newSession?.user ?? null)
+      }
+    })
+
+    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+      if (!active) return
       setSession(initialSession)
       setUser(initialSession?.user ?? null)
       setLoading(false)
-
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
-        setSession(newSession)
-        setUser(newSession?.user ?? null)
-      })
-
-      return () => subscription.unsubscribe()
+    }).catch(() => {
+      if (active) setLoading(false)
+    })
+    return () => {
+      active = false
+      subscription.unsubscribe()
     }
-
-    initAuth()
   }, [supabase, isDemoMode])
 
-  const signInWithGithub = useCallback(async () => {
+  const signInWithGithub = useCallback(async (returnTo = '/') => {
     if (isDemoMode) {
-      const demoUser: User = {
-        id: 'demo-user-1',
-        email: 'demo@burnyourmoneywithslop.xyz',
-        user_metadata: { full_name: 'Demo User', avatar_url: '' },
-        app_metadata: { provider: 'github' },
-        aud: 'authenticated',
-        created_at: new Date().toISOString(),
-      } as User
-      const demoSession: Session = {
-        access_token: 'demo-token',
-        refresh_token: 'demo-refresh',
-        expires_in: 3600,
-        expires_at: Math.floor(Date.now() / 1000) + 3600,
-        token_type: 'bearer',
-        user: demoUser,
-      }
-      setUser(demoUser)
+      const demoSession = createDemoSession()
+      setUser(demoSession.user)
       setSession(demoSession)
       return { error: null }
     }
 
+    if (!window.isSecureContext) {
+      return { error: new AuthError('GitHub sign-in requires HTTPS. The custom-domain certificate is not ready yet.', 400) }
+    }
+
+    window.sessionStorage.setItem(AUTH_RETURN_TO, internalReturnTo(returnTo))
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'github',
       options: {
@@ -99,7 +82,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(null)
       return
     }
-    await supabase.auth.signOut()
+    const { error } = await supabase.auth.signOut({ scope: 'global' })
+    if (error) throw error
   }, [supabase, isDemoMode])
 
   const refreshSession = useCallback(async () => {

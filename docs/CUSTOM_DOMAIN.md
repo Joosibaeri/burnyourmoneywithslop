@@ -1,139 +1,50 @@
-# Custom Domain Setup
+# Custom domain and HTTPS
 
-This guide explains how to configure `burnyourmoneywithslop.joosibaeri.xyz` for your GitHub Pages site.
+Production uses:
 
-## Current Configuration
-
-The repository already includes a `CNAME` file in `public/`:
-```
-burnyourmoneywithslop.joosibaeri.xyz
+```text
+howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz
 ```
 
-This will be deployed to GitHub Pages automatically.
+The public repository and website remain public. GitHub Pages publishes a **GitHub Actions artifact**, not a `gh-pages` branch.
 
----
+## DNS and Pages settings
 
-## DNS Configuration
+The required subdomain record is:
 
-You need to configure DNS for `burnyourmoneywithslop.joosibaeri.xyz` to point to GitHub Pages.
+| Type | Host | Target |
+| --- | --- | --- |
+| CNAME | `howmuchmoneydidyoualreadyburnedwithslop` | `joosibaeri.github.io` |
 
-### Option A: Subdomain (Current Setup)
+The target is the account's GitHub Pages host, not `joosibaeri.xyz` or a repository URL. Do not change unrelated apex/other-site DNS records. Keep this subdomain DNS-only if your provider has a proxy mode.
 
-Since `joosibaeri.xyz` is your root domain, add a **CNAME record**:
+In [repository Settings → Pages](https://github.com/Joosibaeri/burnyourmoneywithslop/settings/pages):
 
-| Type | Name | Value | TTL |
-|------|------|-------|-----|
-| CNAME | burnyourmoneywithslop | joosibaeri.github.io | Auto |
+1. Set **Source → GitHub Actions**.
+2. Set the custom domain to the exact hostname above.
+3. Confirm GitHub's DNS check succeeds.
+4. Once a valid certificate is available, enable **Enforce HTTPS**.
 
-**Important**: The target must be `joosibaeri.github.io` (your GitHub Pages domain), NOT `joosibaeri.xyz`.
+`public/CNAME` matches this hostname. `vite.config.ts` uses **`base: '/'`**, because the application is served at this custom-domain root. Do not change it to the repository path for this deployment. The build supplies a static callback index and SPA 404 fallback for direct profile/invitation routes.
 
-### Option B: Apex Domain (If you want joosibaeri.xyz directly)
+## Certificate provisioning
 
-If you want the root domain `joosibaeri.xyz` to point to GitHub Pages:
+GitHub requests a Let's Encrypt certificate after its DNS checks pass. A working CNAME alone does **not** prove HTTPS is ready. If curl reports a certificate hostname mismatch, do not use `--insecure`, disable verification, or send users through HTTP OAuth.
 
-| Type | Name | Value | TTL |
-|------|------|-------|-----|
-| A | @ | 185.199.108.153 | Auto |
-| A | @ | 185.199.109.153 | Auto |
-| A | @ | 185.199.110.153 | Auto |
-| A | @ | 185.199.111.153 | Auto |
-| CNAME | www | joosibaeri.github.io | Auto |
+If Pages still says **Certificate not yet created** after its DNS check succeeds, GitHub's [official troubleshooting guide](https://docs.github.com/en/pages/getting-started-with-github-pages/securing-your-github-pages-site-with-https#troubleshooting-certificate-provisioning-certificate-not-yet-created-error) recommends removing and re-entering the same custom domain in Pages to restart provisioning. This briefly changes routing; use the settings UI deliberately. Then enable Enforce HTTPS once available.
 
-Then update `public/CNAME` to `joosibaeri.xyz`.
+Check for conflicting subdomain records and CAA rules that prevent Let's Encrypt. The hostname is under GitHub's documented 64-character certificate limit. Do not shorten or replace it without intentionally updating the CNAME, Auth site/redirect URLs, OAuth homepage, and collector discovery URL together.
 
----
+## Verify
 
-## GitHub Pages Configuration
-
-1. Go to your repo: `https://github.com/Joosibaeri/burnyourmoneywithslop`
-2. **Settings** → **Pages**
-3. **Source**: Deploy from a branch
-4. **Branch**: `gh-pages` (created automatically by the workflow) / `/ (root)`
-5. **Custom domain**: Enter `burnyourmoneywithslop.joosibaeri.xyz`
-6. Check **Enforce HTTPS** (may take a few minutes to become available)
-7. Click **Save**
-
----
-
-## Verification
-
-After DNS propagates (usually 5-30 minutes, up to 48 hours):
-
-```bash
-# Check DNS
-dig +short burnyourmoneywithslop.joosibaeri.xyz CNAME
-# Should return: joosibaeri.github.io.
-
-# Check HTTPS
-curl -I https://burnyourmoneywithslop.joosibaeri.xyz
-# Should return 200 OK with valid certificate
+```sh
+curl --head https://howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz
+curl --head https://howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz/auth/callback
+curl https://howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz/collector-config.json
 ```
 
----
+All must use a valid certificate; the first two should return 200 after deployment. The JSON contains only the Supabase project URL and publishable key. An HTTP request should redirect to HTTPS after enforcement is enabled. Direct SPA profile/invite routes may return the custom 404 document and then render normally in the browser.
 
-## Troubleshooting
+GitHub OAuth's registered callback is **Supabase's** `https://skvbxlhnjnksmzdnchlu.supabase.co/auth/v1/callback`, not a Pages route. The website's PKCE return route is `/auth/callback`; it works only with the allowed origin and a valid HTTPS session. See [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
 
-### "Custom domain not verified"
-
-- DNS changes can take up to 48 hours
-- Ensure CNAME points to `joosibaeri.github.io` exactly
-- No trailing dots in the CNAME value in GitHub settings
-
-### HTTPS not working
-
-- Wait 5-10 minutes after domain verification
-- GitHub provisions Let's Encrypt certificates automatically
-- Check "Enforce HTTPS" is checked in Pages settings
-
-### 404 on subdomain
-
-- Ensure the `CNAME` file is in `public/` and gets deployed
-- Check the workflow builds to `dist/` with the CNAME file
-- Verify base path in `vite.config.ts` matches repo name: `/burnyourmoneywithslop/`
-
-### Mixed content warnings
-
-- All assets must load over HTTPS
-- The Vite build with `base: '/burnyourmoneywithslop/'` handles this
-- Check browser console for `http://` requests
-
----
-
-## DNS Providers Quick Reference
-
-### Cloudflare
-1. DNS → Add Record
-2. Type: CNAME, Name: `burnyourmoneywithslop`, Target: `joosibaeri.github.io`
-3. Proxy status: **DNS Only** (gray cloud) - GitHub Pages doesn't work with Cloudflare proxy
-
-### Namecheap
-1. Advanced DNS → Add New Record
-2. Type: CNAME Record, Host: `burnyourmoneywithslop`, Value: `joosibaeri.github.io`
-
-### GoDaddy
-1. DNS Management → Add
-2. Type: CNAME, Host: `burnyourmoneywithslop`, Points to: `joosibaeri.github.io`
-
-### AWS Route 53
-1. Create Record
-2. Record type: CNAME, Name: `burnyourmoneywithslop`, Value: `joosibaeri.github.io`
-
----
-
-## SSL Certificate Details
-
-GitHub Pages uses Let's Encrypt. The certificate covers:
-- `burnyourmoneywithslop.joosibaeri.xyz`
-- `www.burnyourmoneywithslop.joosibaeri.xyz` (if you add it)
-
-Auto-renewal happens automatically.
-
----
-
-## Reverting to GitHub Pages Default
-
-If you want to remove the custom domain:
-
-1. GitHub Settings → Pages → Custom domain → **Remove**
-2. Delete the `CNAME` file from `public/`
-3. Push changes - site will be available at `https://joosibaeri.github.io/burnyourmoneywithslop/`
+If production TLS is pending, authenticated development can be tested at the allowed `localhost:5173` callback using public `.env.local` values. Collector login can use the explicit Supabase `--url`/`--key` fallback; neither workaround bypasses TLS on remote services.

@@ -1,38 +1,53 @@
 import { useAuth } from '@/contexts/AuthContext'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useSupabase } from '@/contexts/SupabaseContext'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Plus, TrendingUp, DollarSign, Users, Activity, Target, ArrowUpRight, User } from 'lucide-react'
-import { useState, useEffect } from 'react'
-import { formatNumber, formatCurrency, getMockStats, getMockMonthlyData } from '@/lib/utils'
+import { useCallback, useState } from 'react'
+import { formatNumber, formatCurrencyPrecise as formatCurrency, getMockStats, getMockMonthlyData } from '@/lib/utils'
+import { aggregateUsage, dashboardStats, emptyStats, githubLogin, loadSubscriptions, loadUsage, recentUsageMonths } from '@/lib/data'
+import { useAsyncData } from '@/hooks/useAsyncData'
 
 export function Dashboard() {
   const { user, loading: authLoading } = useAuth()
-  const { isDemoMode } = useSupabase()
-  const [stats] = useState(getMockStats())
-  const [monthlyData] = useState(getMockMonthlyData())
+  const { isDemoMode, supabase } = useSupabase()
+  const navigate = useNavigate()
+  const userId = user?.id
   const [selectedPeriod, setSelectedPeriod] = useState<'month' | 'quarter' | 'year'>('month')
 
-  useEffect(() => {
-    if (!authLoading && !isDemoMode) {
-      // TODO: Fetch real stats from Supabase
-    }
-  }, [authLoading, isDemoMode])
+  const load = useCallback(async () => {
+    if (!userId) throw new Error('Sign in to load usage.')
+    const [usage, subscriptions, membership] = await Promise.all([
+      loadUsage(supabase, [userId]), loadSubscriptions(supabase, userId),
+      supabase.from('group_members').select('group_id', { count: 'exact', head: true }).eq('user_id', userId),
+    ])
+    if (membership.error) throw new Error(membership.error.message)
+    return { stats: dashboardStats(usage, subscriptions, membership.count ?? 0), monthlyData: aggregateUsage(usage).monthlyData }
+  }, [supabase, userId])
+  const { data, loading, error } = useAsyncData(authLoading || isDemoMode || !userId ? null : `dashboard:${userId}`, load)
+  const stats = isDemoMode ? { ...getMockStats(), totalEstimated: 202, unknownCostEvents: 0 } : data?.stats ?? emptyStats()
+  const monthlyData = isDemoMode ? getMockMonthlyData() : data?.monthlyData ?? []
 
-  const periodData = monthlyData.slice(- (selectedPeriod === 'month' ? 4 : selectedPeriod === 'quarter' ? 12 : 24))
+  if (loading || authLoading) return <p role="status">Loading your usage…</p>
+  if (error) return <Card><CardTitle>Could not load dashboard</CardTitle><p role="alert">{error}</p><Button onClick={() => window.location.reload()}>Retry</Button></Card>
+
+  const periodData = isDemoMode ? monthlyData.slice(- (selectedPeriod === 'month' ? 1 : selectedPeriod === 'quarter' ? 3 : 12)) : recentUsageMonths(monthlyData, selectedPeriod === 'month' ? 1 : selectedPeriod === 'quarter' ? 3 : 12)
 
   return (
     <div>
       <div style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: 8 }}>
-          Welcome back, {user?.user_metadata?.login || user?.email?.split('@')[0] || 'friend'} 👋
+          Welcome back, {githubLogin(user) || 'friend'} 👋
         </h1>
         <p style={{ color: 'var(--fg-muted)' }}>
           Here's your AI coding spending overview
         </p>
       </div>
+
+      {!isDemoMode && stats.totalTokens === 0 && <p style={{ marginBottom: 24, color: 'var(--fg-muted)' }}>No usage recorded this month. <Link to="/settings?tab=subscriptions">Choose your subscriptions</Link> and <Link to="/settings?tab=plugins">install a tool collector</Link> to get started.</p>}
+      {!!stats.unknownCostEvents && <p style={{ marginBottom: 24, color: 'var(--fg-muted)' }}>Model estimates are incomplete: {stats.unknownCostEvents} requests have missing or hidden cost. Unavailable pricing is not free usage.</p>}
 
       <div style={{
         display: 'grid',
@@ -41,12 +56,12 @@ export function Dashboard() {
         marginBottom: 32,
       }}>
         <StatCard
-          title="Total Spent"
+          title="Real Spending"
           value={formatCurrency(stats.totalSpent)}
           change={stats.spentChange}
           icon={DollarSign}
           iconColor="var(--accent)"
-          subtitle="This month"
+          subtitle="Recorded subscription/invoice prices · UTC month"
         />
         <StatCard
           title="Total Tokens"
@@ -54,7 +69,7 @@ export function Dashboard() {
           change={stats.tokensChange}
           icon={Activity}
           iconColor="#60a5fa"
-          subtitle="Input + Output"
+          subtitle="All reported token categories"
         />
         <StatCard
           title="Active Tools"
@@ -81,7 +96,7 @@ export function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <CardTitle>Monthly Spending</CardTitle>
-                  <CardDescription>Real subscription costs + model usage estimates</CardDescription>
+                  <CardDescription>Real subscription costs and model estimates shown separately</CardDescription>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {(['month', 'quarter', 'year'] as const).map((period) => (
@@ -130,7 +145,7 @@ export function Dashboard() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <CardTitle>Active Subscriptions</CardTitle>
-                  <CardDescription>Monthly recurring costs</CardDescription>
+                  <CardDescription>Selected prices; counted only in months with relevant usage</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -144,16 +159,16 @@ export function Dashboard() {
               <CardTitle>Quick Actions</CardTitle>
             </CardHeader>
             <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <Button variant="outline" style={{ justifyContent: 'flex-start' }}>
+              <Button variant="outline" onClick={() => navigate('/groups?create=1')} style={{ justifyContent: 'flex-start' }}>
                 <Plus size={18} /> Create a Group
               </Button>
-              <Button variant="ghost" style={{ justifyContent: 'flex-start' }}>
+              <Button variant="ghost" onClick={() => navigate('/groups')} style={{ justifyContent: 'flex-start' }}>
                 <ArrowUpRight size={18} /> Invite Friends
               </Button>
-              <Button variant="ghost" style={{ justifyContent: 'flex-start' }}>
+              <Button variant="ghost" onClick={() => navigate('/settings?tab=plugins')} style={{ justifyContent: 'flex-start' }}>
                 <Activity size={18} /> Connect a Tool
               </Button>
-              <Link to={`/@${user?.user_metadata?.login || 'profile'}`} style={{ textDecoration: 'none' }}>
+              <Link to={`/@${githubLogin(user) || 'joosibaeri'}`} style={{ textDecoration: 'none' }}>
                 <Button variant="ghost" style={{ justifyContent: 'flex-start' }}>
                   <User size={18} /> View Your Profile
                 </Button>
@@ -237,7 +252,8 @@ function StatCard({
 }
 
 function SpendingChart({ data }: { data: Array<{ month: string; spent: number; tokens: number; estimated: number }> }) {
-  const maxSpent = Math.max(...data.map(d => d.spent), 1)
+  if (!data.length) return <p style={{ color: 'var(--fg-muted)' }}>No usage recorded yet.</p>
+  const maxSpent = Math.max(...data.flatMap(d => [d.spent, d.estimated]), 1)
   const height = 200
   const paddingTop = 20
   const paddingBottom = 30
@@ -246,8 +262,8 @@ function SpendingChart({ data }: { data: Array<{ month: string; spent: number; t
   const gap = (data.length > 1) ? (500 - barWidth * data.length) / (data.length - 1) : 0
 
   return (
-    <div style={{ height, position: 'relative' }}>
-      <svg width="100%" height="100%" style={{ display: 'block' }}>
+    <div>
+      <svg width="100%" height={height} viewBox="0 0 580 200" style={{ display: 'block' }} aria-label="Real spending and estimated cost by month">
         <defs>
           <linearGradient id="spentGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.8} />
@@ -268,9 +284,9 @@ function SpendingChart({ data }: { data: Array<{ month: string; spent: number; t
           return (
             <g key={d.month}>
               <rect
-                x={x}
+                x={x + barWidth / 2}
                 y={estimatedY}
-                width={barWidth}
+                width={barWidth / 2 - 2}
                 height={estimatedHeight}
                 fill="url(#estimatedGradient)"
                 rx={4}
@@ -279,7 +295,7 @@ function SpendingChart({ data }: { data: Array<{ month: string; spent: number; t
               <rect
                 x={x}
                 y={y}
-                width={barWidth}
+                width={barWidth / 2 - 2}
                 height={spentHeight}
                 fill="url(#spentGradient)"
                 rx={4}
@@ -299,21 +315,17 @@ function SpendingChart({ data }: { data: Array<{ month: string; spent: number; t
         })}
       </svg>
       <div style={{
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
         display: 'flex',
         justifyContent: 'center',
         gap: 24,
         paddingTop: 8,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--fg-muted)' }}>
-          <div style={{ width: 12, height: 12, background: 'url(#spentGradient)', borderRadius: 2 }} />
+          <div style={{ width: 12, height: 12, background: 'var(--accent)', borderRadius: 2 }} />
           <span>Real Cost</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--fg-muted)' }}>
-          <div style={{ width: 12, height: 12, background: 'url(#estimatedGradient)', borderRadius: 2 }} />
+          <div style={{ width: 12, height: 12, background: '#60a5fa', borderRadius: 2 }} />
           <span>Estimated</span>
         </div>
       </div>
@@ -321,7 +333,8 @@ function SpendingChart({ data }: { data: Array<{ month: string; spent: number; t
   )
 }
 
-function ToolBreakdown({ tools }: { tools: Array<{ name: string; tokens: number; cost: number; color: string }> }) {
+function ToolBreakdown({ tools }: { tools: Array<{ name: string; tokens: number; cost: number; color: string; unknownCostEvents?: number }> }) {
+  if (!tools.length) return <p style={{ color: 'var(--fg-muted)' }}>No tool usage recorded yet.</p>
   const totalTokens = tools.reduce((sum, t) => sum + t.tokens, 0)
   const totalCost = tools.reduce((sum, t) => sum + t.cost, 0)
 
@@ -338,7 +351,7 @@ function ToolBreakdown({ tools }: { tools: Array<{ name: string; tokens: number;
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
               <span style={{ fontWeight: 500 }}>{tool.name}</span>
-              <span style={{ color: 'var(--fg-muted)' }}>{formatCurrency(tool.cost)}</span>
+              <span style={{ color: 'var(--fg-muted)' }}>{formatCurrency(tool.cost)}{tool.unknownCostEvents ? ' (partial)' : ''}</span>
             </div>
             <div style={{
               height: 6,
@@ -348,7 +361,7 @@ function ToolBreakdown({ tools }: { tools: Array<{ name: string; tokens: number;
               marginTop: 4,
             }}>
               <div style={{
-                width: `${(tool.tokens / totalTokens) * 100}%`,
+                width: `${(tool.tokens / Math.max(totalTokens, 1)) * 100}%`,
                 height: '100%',
                 background: tool.color,
                 borderRadius: 3,
@@ -361,7 +374,7 @@ function ToolBreakdown({ tools }: { tools: Array<{ name: string; tokens: number;
               {formatNumber(tool.tokens)} tokens
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--fg-subtle)' }}>
-              {((tool.tokens / totalTokens) * 100).toFixed(1)}%
+              {((tool.tokens / Math.max(totalTokens, 1)) * 100).toFixed(1)}%
             </div>
           </div>
         </div>
@@ -382,6 +395,7 @@ function ToolBreakdown({ tools }: { tools: Array<{ name: string; tokens: number;
 }
 
 function SubscriptionList({ subscriptions }: { subscriptions: Array<{ name: string; tier: string; cost: number; tools: string[]; active: boolean }> }) {
+  if (!subscriptions.length) return <Link to="/settings?tab=subscriptions">Select your subscriptions</Link>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {subscriptions.map((sub) => (
@@ -432,7 +446,7 @@ function SubscriptionList({ subscriptions }: { subscriptions: Array<{ name: stri
         fontWeight: 700,
         fontSize: '1rem',
       }}>
-        <span>Monthly Total</span>
+        <span>Selected Monthly Total</span>
         <span>{formatCurrency(subscriptions.filter(s => s.active).reduce((sum, s) => sum + s.cost, 0))}</span>
       </div>
     </div>

@@ -7,8 +7,8 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/dist/stop-hook.js"],
-            "timeout": 10,
-            "statusMessage": "Sending usage to Burn Your Money With Slop"
+            "async": true,
+            "timeout": 20
           }
         ]
       }
@@ -20,11 +20,13 @@
             "type": "command",
             "command": "node",
             "args": ["${CLAUDE_PLUGIN_ROOT}/dist/session-end-hook.js"],
-            "timeout": 3,
-            "statusMessage": "Finalizing usage tracking"
+            "timeout": 1
           }
         ]
       }
-    ]
+    ],
+    "StopFailure": [{ "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/stop-hook.js"], "async": true, "timeout": 20 }] }],
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/stop-hook.js"], "async": true, "timeout": 20 }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/dist/subagent-stop-hook.js"], "async": true, "timeout": 20 }] }]
   }
 }

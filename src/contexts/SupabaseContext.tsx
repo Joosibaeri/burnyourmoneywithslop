@@ -1,9 +1,11 @@
 import { createContext, useContext, ReactNode, useMemo } from 'react'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { isPublishableKey, storedClientConfig } from '@/lib/client-config'
 
 declare global {
   interface ImportMetaEnv {
     readonly VITE_SUPABASE_URL: string
+    readonly VITE_SUPABASE_PUBLISHABLE_KEY: string
     readonly VITE_SUPABASE_ANON_KEY: string
   }
   interface ImportMeta {
@@ -11,8 +13,12 @@ declare global {
   }
 }
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || ''
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+const storedConfig = storedClientConfig()
+const deploymentConfigured = !!import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || storedConfig.url
+const SUPABASE_ANON_KEY = deploymentConfigured
+  ? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+  : storedConfig.key
 
 const isDemoMode = !SUPABASE_URL || !SUPABASE_ANON_KEY
 
@@ -27,7 +33,10 @@ function getSupabaseClient(): SupabaseClient {
         { auth: { persistSession: false } }
       )
     } else {
-      supabaseInstance = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+      if (!isPublishableKey(SUPABASE_ANON_KEY)) throw new Error('Use a Supabase publishable key or legacy anon key, never a secret/service-role key.')
+      supabaseInstance = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { flowType: 'pkce', detectSessionInUrl: false },
+      })
     }
   }
   return supabaseInstance
