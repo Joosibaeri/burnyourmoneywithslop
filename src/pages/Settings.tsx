@@ -3,27 +3,26 @@ import { useSupabase } from '@/contexts/SupabaseContext'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { Input } from '@/components/ui/Input'
-import { GitBranch, Database, Key, Save, AlertCircle, HelpCircle, ExternalLink, Trash2, Edit2, Unlock } from 'lucide-react'
+import { GitBranch, Key, AlertCircle, HelpCircle, ExternalLink, Trash2, Edit2, Unlock } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { createClient, type Session, type User } from '@supabase/supabase-js'
+import type { Session, User } from '@supabase/supabase-js'
 import { SUBSCRIPTION_CATALOG, calculateMonthlySubscriptionCost, formatCurrencyPrecise as fmtCurrency } from '@/lib/utils'
 import { githubLogin as getGithubLogin, loadSubscriptions, saveSubscription, subscriptionTools, TOOLS, type SubscriptionSelection } from '@/lib/data'
-import { isPublishableKey, storedClientConfig } from '@/lib/client-config'
 import { COLLECTORS, COLLECTOR_QUICKSTART } from '@/lib/collectors'
+
+const SETTINGS_TABS = [
+  { id: 'account', label: 'Account', icon: GitBranch },
+  { id: 'subscriptions', label: 'Subscriptions', icon: Key },
+  { id: 'plugins', label: 'Collectors', icon: HelpCircle },
+] as const
 
 export function Settings() {
   const { user, session, signOut } = useAuth()
   const { supabase, isDemoMode } = useSupabase()
   const userId = user?.id
   const [params, setParams] = useSearchParams()
-  const activeTab = params.get('tab') || 'account'
-  const storedConfig = storedClientConfig()
-  const deploymentManaged = !!import.meta.env.VITE_SUPABASE_URL
-  const [supabaseUrl, setSupabaseUrl] = useState(import.meta.env.VITE_SUPABASE_URL || storedConfig.url)
-  const [supabaseKey, setSupabaseKey] = useState(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || storedConfig.key)
-  const [supabaseStatus, setSupabaseStatus] = useState<'idle' | 'checking' | 'connected' | 'error'>('idle')
+  const activeTab = SETTINGS_TABS.find(tab => tab.id === params.get('tab'))?.id ?? 'account'
   const [subscriptions, setSubscriptions] = useState<SubscriptionSelection[]>(isDemoMode ? [
     { catalogId: 'claude-pro', tierId: 'pro', tools: subscriptionTools('claude-pro') },
     { catalogId: 'cursor', tierId: 'premium', tools: subscriptionTools('cursor') },
@@ -82,13 +81,6 @@ export function Settings() {
     finally { setSaving(false) }
   }
 
-  const tabs = [
-    { id: 'account', label: 'Account', icon: GitBranch },
-    { id: 'supabase', label: 'Supabase', icon: Database },
-    { id: 'subscriptions', label: 'Subscriptions', icon: Key },
-    { id: 'plugins', label: 'Collectors', icon: HelpCircle },
-  ]
-
   const totalMonthlyCost = calculateMonthlySubscriptionCost(subscriptions)
 
   return (
@@ -96,7 +88,7 @@ export function Settings() {
       <h1 style={{ fontSize: '2rem', fontWeight: 700, marginBottom: 32 }}>Settings</h1>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, flexWrap: 'wrap' }}>
-        {tabs.map(({ id, label, icon: Icon }) => (
+        {SETTINGS_TABS.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setParams({ tab: id })}
@@ -125,18 +117,6 @@ export function Settings() {
       {isDemoMode && <p style={{ marginBottom: 20, color: 'var(--fg-muted)' }}>Demo settings; subscription and visibility changes are not persisted.</p>}
 
       {activeTab === 'account' && <AccountSettings user={user} session={session} onSignOut={signOut} statsPublic={statsPublic} onVisibilityChange={handleVisibility} saving={saving || loading} />}
-      {activeTab === 'supabase' && <SupabaseSettings
-        isDemoMode={isDemoMode}
-        supabaseUrl={supabaseUrl}
-        setSupabaseUrl={setSupabaseUrl}
-        supabaseKey={supabaseKey}
-        setSupabaseKey={setSupabaseKey}
-        supabaseStatus={supabaseStatus}
-        setSupabaseStatus={setSupabaseStatus}
-        saving={saving}
-        setSaving={setSaving}
-        deploymentManaged={deploymentManaged}
-      />}
       {activeTab === 'subscriptions' && <SubscriptionSettings
         subscriptions={subscriptions}
         onSave={handleSaveSubscription}
@@ -224,165 +204,6 @@ function AccountSettings({ user, session, onSignOut, statsPublic, onVisibilityCh
           {error && <p role="alert" style={{ color: 'var(--danger)' }}>{error}</p>}
         </CardContent>
       </Card>
-    </div>
-  )
-}
-
-function SupabaseSettings({
-  isDemoMode,
-  supabaseUrl,
-  setSupabaseUrl,
-  supabaseKey,
-  setSupabaseKey,
-  supabaseStatus,
-  setSupabaseStatus,
-  saving,
-  setSaving,
-  deploymentManaged,
-}: {
-  isDemoMode: boolean
-  supabaseUrl: string
-  setSupabaseUrl: (v: string) => void
-  supabaseKey: string
-  setSupabaseKey: (v: string) => void
-  supabaseStatus: 'idle' | 'checking' | 'connected' | 'error'
-  setSupabaseStatus: (v: 'idle' | 'checking' | 'connected' | 'error') => void
-  saving: boolean
-  setSaving: (v: boolean) => void
-  deploymentManaged: boolean
-}) {
-  const handleTestConnection = async () => {
-    setSupabaseStatus('checking')
-    setSaving(true)
-    try {
-      if (!supabaseUrl || !supabaseKey) {
-        setSupabaseStatus('error')
-        return false
-      }
-      const url = new URL(supabaseUrl)
-      if (url.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new Error('Use HTTPS.')
-      if (!isPublishableKey(supabaseKey)) throw new Error('Use a publishable or legacy anon key, never a privileged key.')
-      const client = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } })
-      const { error } = await client.from('profiles').select('count', { count: 'exact', head: true })
-      if (error) throw error
-      setSupabaseStatus('connected')
-      return true
-    } catch {
-      setSupabaseStatus('error')
-      return false
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleSave = async () => {
-    if (deploymentManaged || !await handleTestConnection()) return
-    try {
-      localStorage.setItem('supabase_url', supabaseUrl)
-      localStorage.setItem('supabase_key', supabaseKey)
-      window.location.reload()
-    } catch { setSupabaseStatus('error') }
-  }
-
-  return (
-    <div style={{ maxWidth: 800 }}>
-      <Card>
-        <CardHeader>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <CardTitle>Supabase Connection</CardTitle>
-              <CardDescription>
-                {deploymentManaged ? 'This website uses a shared hosted backend. Friends do not need their own Supabase project.' : 'Connect a Supabase backend for persistent usage and private groups.'}
-              </CardDescription>
-            </div>
-            {isDemoMode && (
-              <Badge variant="accent" style={{ alignSelf: 'flex-start' }}>
-                <AlertCircle size={14} style={{ marginRight: 4 }} /> Demo Mode
-              </Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            <Input
-              label="Project URL"
-              readOnly={deploymentManaged}
-              value={supabaseUrl}
-              onChange={(e) => setSupabaseUrl(e.target.value)}
-              placeholder="https://your-project.supabase.co"
-              helperText="Project URL from Supabase Dashboard → Connect"
-            />
-            <Input
-              label="Publishable Key (legacy anon supported)"
-              readOnly={deploymentManaged}
-              value={supabaseKey}
-              onChange={(e) => setSupabaseKey(e.target.value)}
-              placeholder="sb_publishable_..."
-              type="password"
-              helperText="Project Settings → API Keys. Never paste a secret or service-role key."
-            />
-          </div>
-
-          <div style={{
-            padding: '20px',
-            background: 'var(--bg)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
-              <div>
-                <h4 style={{ fontWeight: 600, marginBottom: 4 }}>Connection Status</h4>
-                <p style={{ color: 'var(--fg-muted)', fontSize: '0.875rem' }}>
-                  {supabaseStatus === 'connected' && '✅ Connected and ready'}
-                  {supabaseStatus === 'checking' && '🔄 Testing connection...'}
-                  {supabaseStatus === 'error' && '❌ Connection failed — check the public key, HTTPS URL, and migrations'}
-                  {supabaseStatus === 'idle' && '⏸️ Not tested yet'}
-                </p>
-              </div>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <Button variant="outline" onClick={handleTestConnection} disabled={saving || !supabaseUrl || !supabaseKey}>
-                  <Database size={18} /> Test Connection
-                </Button>
-                <Button onClick={handleSave} disabled={deploymentManaged || saving || !supabaseUrl || !supabaseKey} loading={saving}>
-                  <Save size={18} /> Save & Reload
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {deploymentManaged && <p style={{ color: 'var(--fg-muted)' }}>This deployment’s connection is managed through GitHub Actions. It cannot be overridden in the browser.</p>}
-
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 20 }}>
-            <h4 style={{ fontWeight: 600, marginBottom: 16 }}>Required Setup</h4>
-            <SetupStep number={1} title="Enable GitHub Auth" description="In Supabase Dashboard → Authentication → Providers → GitHub, enable GitHub and add your OAuth credentials." />
-            <SetupStep number={2} title="Administrator: deploy backend" description="Apply the reviewed migrations and deploy ingestion using the pinned local Supabase CLI with an explicit remote target. See the repository’s setup guide." />
-            <SetupStep number={3} title="Private Storage" description="The migration creates the private <code>usage-data</code> receipt bucket and owner-only policies." />
-            <SetupStep number={4} title="Custom Domain" description="GitHub Pages uses <code>howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz</code> with a CNAME to <code>joosibaeri.github.io</code>. HTTPS is required for GitHub sign-in." />
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-function SetupStep({ number, title, description }: { number: number; title: string; description: string }) {
-  return (
-    <div style={{ display: 'flex', gap: 12, marginBottom: 16, alignItems: 'flex-start' }}>
-      <div style={{
-        width: 28, height: 28,
-        flexShrink: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'var(--accent-bg)',
-        border: '1px solid var(--accent)',
-        borderRadius: '50%',
-        fontWeight: 700,
-        fontSize: '0.875rem',
-        color: 'var(--accent)',
-      }}>{number}</div>
-      <div style={{ flex: 1 }}>
-        <h5 style={{ fontWeight: 600, marginBottom: 4 }}>{title}</h5>
-        <p style={{ color: 'var(--fg-muted)', fontSize: '0.875rem', lineHeight: 1.5 }} dangerouslySetInnerHTML={{ __html: description }} />
-      </div>
     </div>
   )
 }

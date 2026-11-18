@@ -183,7 +183,7 @@ export function Dashboard() {
                 <CardDescription>
                   <span style={{ color: 'var(--accent)' }}>
                     Connect Supabase to start tracking real usage.{' '}
-                    <a href="/settings" style={{ color: 'var(--accent)', fontWeight: 600 }}>Configure now →</a>
+                    <a href="https://github.com/Joosibaeri/burnyourmoneywithslop#development" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', fontWeight: 600 }}>Configuration guide →</a>
                   </span>
                 </CardDescription>
               </CardHeader>

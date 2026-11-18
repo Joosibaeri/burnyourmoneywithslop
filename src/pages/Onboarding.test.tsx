@@ -28,6 +28,8 @@ describe('live onboarding', () => {
     expect(screen.getByText('2 tools reporting')).toBeInTheDocument()
     expect(screen.queryByText(/Simulate|Added Mine \(Demo\)/)).not.toBeInTheDocument()
     expect(screen.getByText(/public by default/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Manage your GitHub account' })).toHaveAttribute('href', '/settings?tab=account')
+    expect(document.querySelector('a[href*="tab=supabase"]')).toBeNull()
   })
   it('refreshes from persisted state instead of marking a click as completed', async () => {
     render(<Onboarding />)

@@ -33,13 +33,13 @@ export function Onboarding() {
   return <div style={{ maxWidth: 900, margin: '40px auto', padding: '0 20px' }}>
     <h1 style={{ marginBottom: 16 }}>Welcome, {githubLogin(user) || 'friend'}!</h1>
     <p style={{ color: 'var(--fg-muted)', marginBottom: 24 }}>Compare recorded AI usage and your subscription/invoice prices with friends. GitHub identity and aggregate statistics are public by default; raw events, invoices and receipts stay private. Group membership always requires confirmation.</p>
-    {isDemoMode && <p role="status">This is a local demo. No connection or setup is being simulated as complete. <Link to="/settings?tab=supabase">Configure a backend</Link> to use live data.</p>}
+    {isDemoMode && <p role="status">This is a local demo. No connection or setup is being simulated as complete. <a href="https://github.com/Joosibaeri/burnyourmoneywithslop#development" target="_blank" rel="noopener noreferrer">Follow the configuration guide</a> to use live data.</p>}
     {loading && <p role="status">Checking your saved setup…</p>}
     {error && <p role="alert" style={{ color: 'var(--danger)' }}>{error}</p>}
     <div style={{ display: 'grid', gap: 20, margin: '24px 0' }}>
       <SetupCard title="GitHub and backend" icon={Database} complete={saved.connected} status={saved.connected ? 'Connection verified' : 'Not verified'}>
         <p>Your hosted connection is already configured. Friends only need GitHub sign-in, not a Supabase project or secret key.</p>
-        <Link to="/settings?tab=supabase">Review the connection</Link>
+        <Link to="/settings?tab=account">Manage your GitHub account</Link>
       </SetupCard>
       <SetupCard title="Subscription prices" icon={Key} complete={saved.subscriptions > 0} status={`${saved.subscriptions} saved`}>
         <p>Choose only plans you pay for and enter invoice-price overrides if needed. A shared subscription counts once per UTC calendar month with relevant usage. API estimates are not actual charges.</p>
