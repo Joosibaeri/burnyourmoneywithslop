@@ -2,16 +2,17 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Onboarding } from './Onboarding'
 
-const mocks = vi.hoisted(() => ({ demo: false, groupCount: 2, failure: false, subscriptions: vi.fn(), usage: vi.fn(), from: vi.fn() }))
+const mocks = vi.hoisted(() => ({ demo: false, groupCount: 2, failure: false, subscriptions: vi.fn(), customSubscriptions: vi.fn(), usage: vi.fn(), from: vi.fn() }))
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: { id: 'alice', user_metadata: { user_name: 'alice' } } }) }))
 vi.mock('@/contexts/SupabaseContext', () => ({ useSupabase: () => ({ isDemoMode: mocks.demo, supabase: { from: mocks.from } }) }))
-vi.mock('@/lib/data', async () => ({ ...await vi.importActual('@/lib/data'), loadSubscriptions: mocks.subscriptions, loadUsage: mocks.usage }))
+vi.mock('@/lib/data', async () => ({ ...await vi.importActual('@/lib/data'), loadSubscriptions: mocks.subscriptions, loadCustomSubscriptions: mocks.customSubscriptions, loadUsage: mocks.usage }))
 
 beforeEach(() => {
   mocks.demo = false
   mocks.failure = false
   mocks.groupCount = 2
   mocks.subscriptions.mockResolvedValue([{ active: true }])
+  mocks.customSubscriptions.mockResolvedValue([])
   mocks.usage.mockResolvedValue([{ tool: 'codex' }, { tool: 'opencode' }])
   mocks.from.mockImplementation((table: string) => ({ select: () => ({ eq: () => table === 'profiles' ? {
     single: async () => ({ data: mocks.failure ? null : { id: 'alice' }, error: mocks.failure ? { message: 'Backend unavailable' } : null }),
@@ -52,5 +53,10 @@ describe('live onboarding', () => {
     render(<Onboarding />)
     expect(screen.getByRole('status')).toHaveTextContent('local demo')
     expect(screen.queryByText('Connection verified')).not.toBeInTheDocument()
+  })
+  it('includes saved custom subscriptions in setup progress', async () => {
+    mocks.customSubscriptions.mockResolvedValue([{ active: true }, { active: false }])
+    render(<Onboarding />)
+    expect(await screen.findByText('2 saved')).toBeInTheDocument()
   })
 })

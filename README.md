@@ -10,6 +10,7 @@ Compare AI coding tokens and recorded subscription spending with friends. Public
 
 1. Sign in on the website with GitHub.
 2. In **Settings → Subscriptions**, select plans you actually pay for. Enter your monthly invoice amount/share when the catalogue price isn't right.
+   For another provider or plan, choose **Add custom subscription** and enter its name, monthly USD price and covered tools. You can edit it or stop tracking without erasing older months.
 3. Install collectors on each machine with Node.js **22 or newer**:
 
 ```sh
@@ -55,6 +56,7 @@ Failed uploads stay in a private, account-scoped local queue. Logging into anoth
 
 - **Real spending** is your recorded subscription/invoice price, not an inferred API bill. You select the paid plans and may override their prices, including tax, discounts, additional charges, or your share of a team invoice.
 - A subscription shared across tools counts **once per user per UTC calendar month with relevant recorded usage**. Group totals sum each member independently.
+- Custom plans have their own stable identities and follow the same rules. Two distinct custom subscriptions may share a name; each counts separately. Avoid tracking the same invoice through both a catalogue entry and a custom plan.
 - Selections and price edits apply to the **current UTC calendar month**. Older subscription records are retained. Stopping tracking does not cancel a provider subscription.
 - Catalogue prices are monthly USD prices; use a monthly-equivalent amount for annual plans. For shared team invoices, record your share—not the full invoice on every member's account.
 - **Model estimates** remain separate. OpenCode/Cursor reported model costs and Claude/Codex standard token-price estimates are not actual invoice charges. Unknown models and hidden Cursor costs are marked unavailable, and the UI labels estimates as partial.
@@ -67,6 +69,7 @@ The catalogue includes Claude Pro/Max, ChatGPT allowance tiers, current and lega
 - Uploaded usage contains only token counters, an estimated/reported model cost and its source, model identifier, timestamp, and opaque hashed event/session IDs. **No prompts, code, file contents, transcripts, repository paths or GitHub provider tokens are uploaded.** Claude reads existing transcripts locally; it does not copy or modify them.
 - GitHub name, username and avatar are public. Aggregate statistics are public **by default**; disable public statistics in Settings to share them only with yourself and groups you joined.
 - Raw events and subscription records are owner-only. Receipt storage is private and owner-scoped; receipt contents are never part of public statistics.
+- Custom subscription names, tool coverage and price-period records are owner-only too; only their spending contribution is included in allowed aggregates.
 - Creating a group enrolls its creator only. Friends must sign in and explicitly confirm joining via an invitation link. Owners cannot enroll arbitrary users or rewrite membership identities.
 - Keep invitation links private. Anyone who has one can choose to join; no email/GitHub notification is sent automatically.
 - Publishable/legacy anon keys are public client configuration. **Secret/service-role keys and GitHub OAuth secrets must never be put in frontend or collector configuration.**

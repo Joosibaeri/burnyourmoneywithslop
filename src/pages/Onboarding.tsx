@@ -6,7 +6,7 @@ import { useSupabase } from '@/contexts/SupabaseContext'
 import { Button } from '@/components/ui/Button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { githubLogin, loadSubscriptions, loadUsage } from '@/lib/data'
+import { githubLogin, loadCustomSubscriptions, loadSubscriptions, loadUsage } from '@/lib/data'
 import { COLLECTORS, COLLECTOR_QUICKSTART } from '@/lib/collectors'
 import { useAsyncData } from '@/hooks/useAsyncData'
 
@@ -18,13 +18,13 @@ export function Onboarding() {
 
   const load = useCallback(async () => {
     if (!userId) throw new Error('Sign in to check setup.')
-    const [profile, subscriptions, usage, groups] = await Promise.all([
+    const [profile, subscriptions, customSubscriptions, usage, groups] = await Promise.all([
       supabase.from('profiles').select('id').eq('id', userId).single(),
-      loadSubscriptions(supabase, userId), loadUsage(supabase, [userId]),
+      loadSubscriptions(supabase, userId), loadCustomSubscriptions(supabase, userId), loadUsage(supabase, [userId]),
       supabase.from('group_members').select('group_id', { count: 'exact', head: true }).eq('user_id', userId),
     ])
     if (profile.error || groups.error) throw new Error(profile.error?.message || groups.error?.message)
-    return { connected: !!profile.data, subscriptions: subscriptions.filter(sub => sub.active).length,
+    return { connected: !!profile.data, subscriptions: subscriptions.filter(sub => sub.active).length + customSubscriptions.filter(sub => sub.active).length,
       groups: groups.count ?? 0, tools: [...new Set(usage.map(row => row.tool))] }
   }, [supabase, userId])
   const { data, loading, error } = useAsyncData(isDemoMode || !userId ? null : `setup:${userId}:${refresh}`, load)

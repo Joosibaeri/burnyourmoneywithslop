@@ -3,12 +3,13 @@ import { useSupabase } from '@/contexts/SupabaseContext'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { GitBranch, Key, AlertCircle, HelpCircle, ExternalLink, Trash2, Edit2, Unlock } from 'lucide-react'
+import { CustomSubscriptionForm } from '@/components/CustomSubscriptionForm'
+import { GitBranch, Key, AlertCircle, HelpCircle, ExternalLink, Trash2, Edit2, Unlock, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { Session, User } from '@supabase/supabase-js'
 import { SUBSCRIPTION_CATALOG, calculateMonthlySubscriptionCost, formatCurrencyPrecise as fmtCurrency } from '@/lib/utils'
-import { githubLogin as getGithubLogin, loadSubscriptions, saveSubscription, subscriptionTools, TOOLS, type SubscriptionSelection } from '@/lib/data'
+import { githubLogin as getGithubLogin, loadCustomSubscriptions, loadSubscriptions, saveCustomSubscription, saveSubscription, subscriptionTools, TOOLS, type CustomSubscriptionRecord, type CustomSubscriptionSelection, type SubscriptionSelection } from '@/lib/data'
 import { COLLECTORS, COLLECTOR_QUICKSTART } from '@/lib/collectors'
 
 const SETTINGS_TABS = [
@@ -16,6 +17,11 @@ const SETTINGS_TABS = [
   { id: 'subscriptions', label: 'Subscriptions', icon: Key },
   { id: 'plugins', label: 'Collectors', icon: HelpCircle },
 ] as const
+
+function activeCustomSelections(records: CustomSubscriptionRecord[]): CustomSubscriptionSelection[] {
+  return records.filter(sub => sub.active).map(sub => ({ subscriptionId: sub.subscription_id,
+    name: sub.name, monthlyPrice: Number(sub.monthly_price_usd), tools: sub.tools }))
+}
 
 export function Settings() {
   const { user, session, signOut } = useAuth()
@@ -28,6 +34,7 @@ export function Settings() {
     { catalogId: 'cursor', tierId: 'premium', tools: subscriptionTools('cursor') },
     { catalogId: 'opencode', tierId: 'free', tools: subscriptionTools('opencode') },
   ] : [])
+  const [customSubscriptions, setCustomSubscriptions] = useState<CustomSubscriptionSelection[]>([])
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(!isDemoMode)
   const [error, setError] = useState<string | null>(null)
@@ -42,12 +49,14 @@ export function Settings() {
     let active = true
     Promise.all([
       loadSubscriptions(supabase, userId),
+      loadCustomSubscriptions(supabase, userId),
       supabase.from('profiles').select('stats_public').eq('id', userId).single(),
-    ]).then(([records, profile]) => {
+    ]).then(([records, customRecords, profile]) => {
       if (!active) return
       if (profile.error) throw new Error(profile.error.message)
       setStatsPublic(profile.data.stats_public)
       setSubscriptions(records.filter(sub => sub.active).map(sub => ({ catalogId: sub.catalog, tierId: sub.tier, customPrice: sub.custom_price_usd == null ? undefined : Number(sub.custom_price_usd), tools: sub.tools.length ? sub.tools : subscriptionTools(sub.catalog) })))
+      setCustomSubscriptions(activeCustomSelections(customRecords))
     }).catch(err => { if (active) setError(err instanceof Error ? err.message : 'Could not load settings.') })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
@@ -81,7 +90,23 @@ export function Settings() {
     finally { setSaving(false) }
   }
 
-  const totalMonthlyCost = calculateMonthlySubscriptionCost(subscriptions)
+  const handleSaveCustom = async (sub: CustomSubscriptionSelection, active = true): Promise<boolean> => {
+    setSaving(true)
+    setError(null)
+    try {
+      if (isDemoMode) {
+        const saved = { ...sub, subscriptionId: sub.subscriptionId ?? crypto.randomUUID() }
+        setCustomSubscriptions(previous => [...previous.filter(old => old.subscriptionId !== saved.subscriptionId), ...(active ? [saved] : [])])
+      } else {
+        await saveCustomSubscription(supabase, sub, active)
+        setCustomSubscriptions(activeCustomSelections(await loadCustomSubscriptions(supabase, user!.id)))
+      }
+      return true
+    } catch (err) { setError(err instanceof Error ? err.message : 'Could not save custom subscription.'); return false }
+    finally { setSaving(false) }
+  }
+
+  const totalMonthlyCost = calculateMonthlySubscriptionCost(subscriptions) + customSubscriptions.reduce((sum, sub) => sum + sub.monthlyPrice, 0)
 
   return (
     <div>
@@ -120,6 +145,8 @@ export function Settings() {
       {activeTab === 'subscriptions' && <SubscriptionSettings
         subscriptions={subscriptions}
         onSave={handleSaveSubscription}
+        customSubscriptions={customSubscriptions}
+        onSaveCustom={handleSaveCustom}
         saving={saving || loading}
         totalMonthlyCost={totalMonthlyCost}
       />}
@@ -211,17 +238,22 @@ function AccountSettings({ user, session, onSignOut, statsPublic, onVisibilityCh
 function SubscriptionSettings({
   subscriptions,
   onSave,
+  customSubscriptions,
+  onSaveCustom,
   saving,
   totalMonthlyCost,
 }: {
   subscriptions: SubscriptionSelection[]
   onSave: (sub: SubscriptionSelection, active?: boolean) => Promise<boolean>
+  customSubscriptions: CustomSubscriptionSelection[]
+  onSaveCustom: (sub: CustomSubscriptionSelection, active?: boolean) => Promise<boolean>
   saving: boolean
   totalMonthlyCost: number
 }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [customPrice, setCustomPrice] = useState('')
   const [priceError, setPriceError] = useState<string | null>(null)
+  const [editingCustom, setEditingCustom] = useState<CustomSubscriptionSelection | null | undefined>(undefined)
 
   const handleTierChange = async (catalogId: string, tierId: string) => {
     const sub = subscriptions.find(sub => sub.catalogId === catalogId)
@@ -261,6 +293,26 @@ function SubscriptionSettings({
         </CardHeader>
         <CardContent>
           <p style={{ color: 'var(--fg-muted)', marginBottom: 20 }}>Selections and invoice-price edits apply to the current UTC calendar month. Older months are retained. The prices below are not spending until relevant usage is recorded.</p>
+          <section aria-label="Custom subscriptions" style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+              <h3>Custom subscriptions</h3>
+              <Button variant="outline" disabled={saving} onClick={() => setEditingCustom(null)}><Plus size={16} /> Add custom subscription</Button>
+            </div>
+            {editingCustom !== undefined && <CustomSubscriptionForm key={editingCustom?.subscriptionId ?? 'new'} subscription={editingCustom ?? undefined} saving={saving} onSave={onSaveCustom} onCancel={() => setEditingCustom(undefined)} />}
+            {!customSubscriptions.length && <p style={{ color: 'var(--fg-muted)' }}>Add a plan that isn't in the catalogue, with your own name, monthly price and covered tools.</p>}
+            <div style={{ display: 'grid', gap: 12 }}>{customSubscriptions.map(sub => <div key={sub.subscriptionId} style={{ padding: 16, border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div><h4>{sub.name} <Badge size="sm">Custom</Badge></h4><p style={{ color: 'var(--fg-muted)', fontSize: '0.8125rem' }}>{sub.tools.map(tool => TOOLS[tool]?.name ?? tool).join(', ')}</p></div>
+                <strong>{fmtCurrency(sub.monthlyPrice)}/mo</strong>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                <Button variant="ghost" size="sm" aria-label={`Edit ${sub.name}`} disabled={saving} onClick={() => setEditingCustom(sub)}><Edit2 size={14} /> Edit</Button>
+                <Button variant="ghost" size="sm" aria-label={`Stop tracking ${sub.name}`} disabled={saving} onClick={async () => { if (await onSaveCustom(sub, false) && editingCustom?.subscriptionId === sub.subscriptionId) setEditingCustom(undefined) }}><Trash2 size={14} /> Stop Tracking</Button>
+              </div>
+            </div>)}</div>
+            <p style={{ color: 'var(--fg-muted)', fontSize: '0.8125rem', marginTop: 12 }}>Track the same invoice using either a catalogue plan or a custom plan, not both. Stopping tracking retains history and does not cancel your provider's subscription.</p>
+          </section>
+          <h3 style={{ marginBottom: 16 }}>Catalogue subscriptions</h3>
           {priceError && <p role="alert" style={{ color: 'var(--danger)', marginBottom: 16 }}>{priceError}</p>}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {SUBSCRIPTION_CATALOG.map(catalog => {

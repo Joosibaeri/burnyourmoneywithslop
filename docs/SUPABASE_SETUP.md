@@ -77,6 +77,7 @@ Local development can use those public values in untracked `.env.local`. `localh
 - `profiles`: public GitHub display identity, public-statistics toggle; users cannot rewrite another GitHub identity.
 - `groups`/`group_members`: member-only reads; creation enrolls the owner; the invite RPC only enrolls its authenticated caller after explicit website confirmation.
 - `user_subscriptions`: owner-only rows with retained historical periods; `set_subscription` edits the current UTC month.
+- `custom_subscriptions`: owner-only named plans with stable logical IDs and retained price periods. `set_custom_subscription` adds/edits a plan for the current UTC month or stops future tracking. Each custom plan is counted once per used month across its covered tools; its name and raw records remain private.
 - `usage_events`: owner-only metrics with mandatory opaque `event_id`; uniqueness is `(user_id, tool, event_id)`. Only `model_request` events are accepted—no cumulative/session summaries or arbitrary metadata.
 - `monthly_usage_summary`: controlled aggregates, visible for public statistics, the owner, or consenting shared-group members. Raw events/invoices are never exposed through it. Real costs repeat per tool in this view; count once per **user/month**, then sum group members separately.
 - `usage-data`: private receipt bucket, with owner-folder insert/select/update/delete policies. Receipt replacement requires all three write/read policies. No receipt contents are published.
@@ -84,6 +85,8 @@ Local development can use those public values in untracked `.env.local`. `localh
 RLS and explicit grants are separate requirements. Do not “fix” permissions by granting arbitrary membership inserts, profile identity updates, or broad table access. Privileged helpers are in an unexposed private schema with explicit visibility/ownership checks and restricted execution; the public view is security-invoker.
 
 The follow-up `lock_down_application_grants` migration explicitly revokes permissive inherited table privileges before granting the intended operations/columns. Applying only the initial schema is insufficient on a project with default `ALL` grants. Local tests simulate those hosted defaults and apply every migration in order. Project-wide default privileges and unrelated objects are left unchanged.
+
+The `custom_subscriptions` migration also removes inherited grants on its new table and extends monthly totals without changing existing catalogue prices or authentication settings. Deploy migrations before publishing the UI that uses their RPCs.
 
 Ingestion accepts 1–500 events and at most 1 MiB. Supplied user IDs, prompt/code/snapshot/transcript fields and arbitrary metadata are discarded. Caller identity comes from authentication, never from a payload field.
 

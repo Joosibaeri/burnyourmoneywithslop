@@ -1,6 +1,13 @@
 # Deployment verification — 2026-11-18
 
-## Backend deployed
+## Custom-subscriptions update
+
+- Migration `20261118204804_custom_subscriptions` adds private named plans and extends monthly spending without changing catalogue prices or authentication configuration.
+- **147 tests pass**, including add/edit/stop UI flows, multiple custom plans, per-month/per-tool deduplication, ownership and historical-price retention. The Supabase settings tab remains removed.
+- Native hosted Postgres checks also pass for creation, repeated edits, once-per-month counting, stopping tracking and cross-user denial. The verification transaction was rolled back; no test custom plans or usage were left behind, and existing catalogue rows were retained.
+- Anonymous access to custom records and their write RPC is denied. Health advisors are clear. A pre-existing [leaked-password-protection warning](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) remains; this feature does not alter your Auth settings.
+
+## Initial backend deployment snapshot
 
 - Project: `skvbxlhnjnksmzdnchlu`.
 - Both migrations applied: `20261117000001_initial_schema` and `20261118184113_lock_down_application_grants`.

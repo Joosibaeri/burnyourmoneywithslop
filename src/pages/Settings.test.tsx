@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Settings } from './Settings'
@@ -36,5 +36,39 @@ describe('settings navigation', () => {
     expect(screen.getByText('Subscription Management')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Collectors' }))
     expect(screen.getByText('Sign in once per machine')).toBeInTheDocument()
+  })
+
+  it('adds, edits and stops tracking a custom plan without restoring the Supabase tab', async () => {
+    renderSettings('/settings?tab=subscriptions')
+    fireEvent.click(screen.getByRole('button', { name: 'Add custom subscription' }))
+    const form = screen.getByRole('form', { name: 'Add custom subscription' })
+    fireEvent.change(within(form).getByRole('textbox', { name: 'Subscription name' }), { target: { value: 'My custom AI plan' } })
+    fireEvent.change(within(form).getByRole('spinbutton', { name: 'Monthly price (USD)' }), { target: { value: '12.50' } })
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'Codex' }))
+    fireEvent.click(within(form).getByRole('checkbox', { name: 'OpenCode' }))
+    fireEvent.submit(form)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit My custom AI plan' })).toBeInTheDocument())
+    expect(screen.getByText('$62.50/mo')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Supabase' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit My custom AI plan' }))
+    const editForm = screen.getByRole('form', { name: 'Edit custom subscription' })
+    fireEvent.change(within(editForm).getByRole('spinbutton', { name: 'Monthly price (USD)' }), { target: { value: '15' } })
+    fireEvent.submit(editForm)
+    await waitFor(() => expect(screen.getByText('$65.00/mo')).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Stop tracking My custom AI plan' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Edit My custom AI plan' })).not.toBeInTheDocument())
+    expect(screen.getByText('$50.00/mo')).toBeInTheDocument()
+  })
+
+  it('requires tool coverage before saving a custom subscription', () => {
+    renderSettings('/settings?tab=subscriptions')
+    fireEvent.click(screen.getByRole('button', { name: 'Add custom subscription' }))
+    const form = screen.getByRole('form', { name: 'Add custom subscription' })
+    fireEvent.change(within(form).getByRole('textbox', { name: 'Subscription name' }), { target: { value: 'My plan' } })
+    fireEvent.change(within(form).getByRole('spinbutton', { name: 'Monthly price (USD)' }), { target: { value: '10' } })
+    fireEvent.submit(form)
+    expect(screen.getByRole('alert')).toHaveTextContent('Choose at least one supported tool')
+    expect(screen.queryByRole('button', { name: 'Edit My plan' })).not.toBeInTheDocument()
   })
 })

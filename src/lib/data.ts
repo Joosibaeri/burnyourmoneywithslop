@@ -29,6 +29,33 @@ export interface SubscriptionSelection {
   tools: string[]
 }
 
+export interface CustomSubscriptionRecord {
+  id: string
+  subscription_id: string
+  name: string
+  monthly_price_usd: number | string
+  tools: string[]
+  active: boolean
+  started_at: string
+  ended_at: string | null
+}
+
+export interface CustomSubscriptionSelection {
+  subscriptionId?: string
+  name: string
+  monthlyPrice: number
+  tools: string[]
+}
+
+export interface DisplaySubscription {
+  id?: string
+  name: string
+  tier: string
+  cost: number
+  tools: string[]
+  active: boolean
+}
+
 export interface ProfileRecord {
   id: string
   github_login: string | null
@@ -44,7 +71,8 @@ export type GroupData = ReturnType<typeof getMockGroups>[number] & {
   trend?: Array<{ month: string; values: Record<string, number> }>
 }
 
-export type DashboardStats = Omit<ReturnType<typeof getMockStats>, 'spentChange' | 'tokensChange'> & {
+export type DashboardStats = Omit<ReturnType<typeof getMockStats>, 'spentChange' | 'tokensChange' | 'subscriptions'> & {
+  subscriptions: DisplaySubscription[]
   totalEstimated: number
   unknownCostEvents?: number
   spentChange: { value: number; positive: boolean } | null
@@ -172,7 +200,30 @@ export async function saveSubscription(supabase: SupabaseClient, sub: Subscripti
   if (error) throw new Error(error.message)
 }
 
-export function dashboardStats(rows: UsageSummary[], subscriptions: SubscriptionRecord[], groupCount: number, now = new Date()): DashboardStats {
+export async function loadCustomSubscriptions(supabase: SupabaseClient, userId: string): Promise<CustomSubscriptionRecord[]> {
+  const { data, error } = await supabase.from('custom_subscriptions').select('*').eq('user_id', userId).order('started_at')
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
+
+export function customSubscriptionError(sub: CustomSubscriptionSelection): string | null {
+  if (!sub.name.trim() || sub.name.trim().length > 100) return 'Enter a subscription name (1–100 characters).'
+  if (!Number.isFinite(sub.monthlyPrice) || sub.monthlyPrice < 0 || sub.monthlyPrice > 99_999_999.99 || Math.abs(sub.monthlyPrice * 100 - Math.round(sub.monthlyPrice * 100)) > 0.000001) return 'Enter a non-negative monthly USD price with at most two decimals.'
+  if (!sub.tools.length || sub.tools.some(tool => !Object.hasOwn(TOOLS, tool))) return 'Choose at least one supported tool.'
+  return null
+}
+
+export async function saveCustomSubscription(supabase: SupabaseClient, sub: CustomSubscriptionSelection, active = true): Promise<void> {
+  const validationError = active ? customSubscriptionError(sub) : !sub.subscriptionId ? 'Choose a custom subscription to stop tracking.' : null
+  if (validationError) throw new Error(validationError)
+  const { error } = await supabase.rpc('set_custom_subscription', {
+    p_subscription_id: sub.subscriptionId ?? null, p_name: sub.name.trim(),
+    p_monthly_price: sub.monthlyPrice, p_tools: sub.tools, p_active: active,
+  })
+  if (error) throw new Error(error.message)
+}
+
+export function dashboardStats(rows: UsageSummary[], subscriptions: SubscriptionRecord[], groupCount: number, now = new Date(), customSubscriptions: CustomSubscriptionRecord[] = []): DashboardStats {
   const month = now.toISOString().slice(0, 7)
   const summary = aggregateUsage(rows.filter(row => row.month.startsWith(month)))
   const previousMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7)
@@ -181,11 +232,15 @@ export function dashboardStats(rows: UsageSummary[], subscriptions: Subscription
   return {
     ...emptyStats(), ...summary, activeTools: summary.toolBreakdown.length, groupCount,
     spentChange: change(summary.totalSpent, previous.totalSpent), tokensChange: change(summary.totalTokens, previous.totalTokens),
-    subscriptions: subscriptions.filter(sub => sub.active).map(sub => ({
+    subscriptions: [...subscriptions.filter(sub => sub.active).map(sub => ({
+      id: `catalog:${sub.catalog}`,
       name: SUBSCRIPTION_CATALOG.find(catalog => catalog.id === sub.catalog)?.name ?? sub.catalog,
       tier: SUBSCRIPTION_CATALOG.find(catalog => catalog.id === sub.catalog)?.tiers.find(tier => tier.id === sub.tier)?.name ?? sub.tier,
       cost: subscriptionPrice(sub), tools: (sub.tools.length ? sub.tools : subscriptionTools(sub.catalog)).map(tool => TOOLS[tool]?.name ?? tool), active: true,
-    })),
+    })), ...customSubscriptions.filter(sub => sub.active).map(sub => ({
+      id: `custom:${sub.subscription_id}`, name: sub.name, tier: 'Custom', cost: Number(sub.monthly_price_usd),
+      tools: sub.tools.map(tool => TOOLS[tool]?.name ?? tool), active: true,
+    }))],
   }
 }
 

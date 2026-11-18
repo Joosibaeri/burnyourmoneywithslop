@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/Badge'
 import { Plus, TrendingUp, DollarSign, Users, Activity, Target, ArrowUpRight, User } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { formatNumber, formatCurrencyPrecise as formatCurrency, getMockStats, getMockMonthlyData } from '@/lib/utils'
-import { aggregateUsage, dashboardStats, emptyStats, githubLogin, loadSubscriptions, loadUsage, recentUsageMonths } from '@/lib/data'
+import { aggregateUsage, dashboardStats, emptyStats, githubLogin, loadCustomSubscriptions, loadSubscriptions, loadUsage, recentUsageMonths, type DisplaySubscription } from '@/lib/data'
 import { useAsyncData } from '@/hooks/useAsyncData'
 
 export function Dashboard() {
@@ -19,12 +19,13 @@ export function Dashboard() {
 
   const load = useCallback(async () => {
     if (!userId) throw new Error('Sign in to load usage.')
-    const [usage, subscriptions, membership] = await Promise.all([
+    const [usage, subscriptions, customSubscriptions, membership] = await Promise.all([
       loadUsage(supabase, [userId]), loadSubscriptions(supabase, userId),
+      loadCustomSubscriptions(supabase, userId),
       supabase.from('group_members').select('group_id', { count: 'exact', head: true }).eq('user_id', userId),
     ])
     if (membership.error) throw new Error(membership.error.message)
-    return { stats: dashboardStats(usage, subscriptions, membership.count ?? 0), monthlyData: aggregateUsage(usage).monthlyData }
+    return { stats: dashboardStats(usage, subscriptions, membership.count ?? 0, new Date(), customSubscriptions), monthlyData: aggregateUsage(usage).monthlyData }
   }, [supabase, userId])
   const { data, loading, error } = useAsyncData(authLoading || isDemoMode || !userId ? null : `dashboard:${userId}`, load)
   const stats = isDemoMode ? { ...getMockStats(), totalEstimated: 202, unknownCostEvents: 0 } : data?.stats ?? emptyStats()
@@ -394,12 +395,12 @@ function ToolBreakdown({ tools }: { tools: Array<{ name: string; tokens: number;
   )
 }
 
-function SubscriptionList({ subscriptions }: { subscriptions: Array<{ name: string; tier: string; cost: number; tools: string[]; active: boolean }> }) {
+function SubscriptionList({ subscriptions }: { subscriptions: DisplaySubscription[] }) {
   if (!subscriptions.length) return <Link to="/settings?tab=subscriptions">Select your subscriptions</Link>
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {subscriptions.map((sub) => (
-        <div key={sub.name} style={{
+        <div key={sub.id ?? sub.name} style={{
           display: 'flex',
           alignItems: 'center',
           gap: 12,

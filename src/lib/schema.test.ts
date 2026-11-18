@@ -8,6 +8,7 @@ const alice = '00000000-0000-0000-0000-000000000001'
 const bob = '00000000-0000-0000-0000-000000000002'
 const stranger = '00000000-0000-0000-0000-000000000003'
 const groupId = '10000000-0000-0000-0000-000000000001'
+const bobCustomId = '20000000-0000-0000-0000-000000000002'
 let db: PGlite
 
 // Run the actual migration against local Postgres/WASM, with minimal Supabase schemas.
@@ -54,6 +55,8 @@ beforeAll(async () => {
       ('${alice}', 'cursor', 'premium', null, '{cursor}', '2026-11-01Z');
     insert into public.user_subscriptions (user_id, catalog, tier, tools, active, started_at, ended_at) values
       ('${alice}', 'claude-pro', 'pro', '{claude-code}', false, '2026-10-01Z', '2026-11-01Z');
+    insert into public.custom_subscriptions (subscription_id,user_id,name,monthly_price_usd,tools,started_at)
+      values ('${bobCustomId}','${bob}','Private custom plan',9,'{cursor}','2026-11-01Z');
     insert into public.usage_events (user_id, tool, event_type, event_id, input_tokens, output_tokens, session_id, occurred_at) values
       ('${alice}', 'codex', 'model_request', repeat('a', 64), 100, 20, repeat('a', 64), '2026-11-15T12:00:00Z'),
       ('${alice}', 'opencode', 'model_request', repeat('b', 64), 200, 30, repeat('b', 64), '2026-11-15T12:01:00Z'),
@@ -140,7 +143,7 @@ describe('production schema and access control', () => {
   })
 
   it('revokes inherited table-wide writes, truncation, and server-field inserts', async () => {
-    for (const table of ['profiles', 'groups', 'group_members', 'user_subscriptions', 'usage_events']) {
+    for (const table of ['profiles', 'groups', 'group_members', 'user_subscriptions', 'custom_subscriptions', 'usage_events']) {
       const result = await db.query<{ allowed: boolean }>("select has_table_privilege('authenticated',$1,'TRUNCATE') as allowed", [`public.${table}`])
       expect(result.rows[0].allowed).toBe(false)
     }
@@ -221,6 +224,73 @@ describe('production schema and access control', () => {
   it('cannot read another user’s subscriptions through the cost RPC', async () => {
     const result = await asUser(stranger, client => client.query<{ cost: string }>("select public.calculate_monthly_real_cost($1, '2026-11-01') as cost", [alice]))
     expect(Number(result.rows[0].cost)).toBe(0)
+  })
+
+  it('keeps custom subscription names/prices owner-only, even inside shared groups', async () => {
+    await expect(asUser(null, client => client.query('select * from public.custom_subscriptions'))).rejects.toThrow(/permission denied/)
+    const privateRows = await asUser(alice, client => client.query('select name from public.custom_subscriptions'))
+    expect(privateRows.rows).toHaveLength(0)
+    const ownRows = await asUser(bob, client => client.query('select name from public.custom_subscriptions'))
+    expect(ownRows.rows).toEqual([{ name: 'Private custom plan' }])
+    const comparison = await asUser(alice, client => client.query<{ real_cost_usd: string }>('select real_cost_usd from public.monthly_usage_summary where user_id=$1', [bob]))
+    expect(Number(comparison.rows[0].real_cost_usd)).toBe(9)
+  })
+
+  it('rejects cross-user custom plan writes, reassignment and RPC edits', async () => {
+    await expect(asUser(alice, client => client.query("insert into public.custom_subscriptions (user_id,name,monthly_price_usd,tools) values ($1,'Foreign plan',1,'{codex}')", [bob]))).rejects.toThrow(/row-level security/)
+    await expect(asUser(bob, client => client.query('update public.custom_subscriptions set user_id=$1', [alice]))).rejects.toThrow(/row-level security/)
+    await expect(asUser(alice, client => client.query("select public.set_custom_subscription($1,'Foreign plan',1,'{codex}',true)", [bobCustomId]))).rejects.toThrow('Custom subscription not found')
+    await expect(asUser(null, client => client.query("select public.set_custom_subscription(null,'Anonymous plan',1,'{codex}',true)"))).rejects.toThrow(/permission denied/)
+  })
+
+  it('counts each custom subscription once per used month, not once per tool or name', async () => {
+    await asUser(alice, async client => {
+      await client.query("insert into public.custom_subscriptions (user_id,name,monthly_price_usd,tools,started_at) values ($1,'Same name',12.50,'{codex,opencode}','2026-11-01Z'),($1,'Same name',7,'{codex}','2026-11-01Z'),($1,'Unused plan',99,'{cursor}','2026-11-01Z')", [alice])
+      const cost = await client.query<{ cost: string }>("select public.calculate_monthly_real_cost($1,'2026-11-01') as cost", [alice])
+      expect(Number(cost.rows[0].cost)).toBe(44.5) // existing $25 + $12.50 + $7; unused $99 excluded
+      const rows = await client.query<{ real_cost_usd: string }>("select real_cost_usd from public.monthly_usage_summary where user_id=$1 and month='2026-11-01Z'", [alice])
+      expect(rows.rows).toHaveLength(2)
+      expect(rows.rows.every(row => Number(row.real_cost_usd) === 44.5)).toBe(true)
+      const unusedMonth = await client.query<{ cost: string }>("select public.calculate_monthly_real_cost($1,'2026-12-01') as cost", [alice])
+      expect(Number(unusedMonth.rows[0].cost)).toBe(0)
+    })
+  })
+
+  it('retains historical custom prices and reuses the current UTC month on repeated edits', async () => {
+    await asUser(alice, async client => {
+      const created = await client.query<{ subscription_id: string }>("insert into public.custom_subscriptions (user_id,name,monthly_price_usd,tools,started_at) values ($1,'Old name',9,'{codex}',date_trunc('month',now() at time zone 'UTC') at time zone 'UTC' - interval '1 month') returning subscription_id", [alice])
+      const id = created.rows[0].subscription_id
+      await client.query("insert into public.usage_events (user_id,tool,event_type,event_id,occurred_at) values ($1,'codex','model_request',repeat('e',64),date_trunc('month',now() at time zone 'UTC') at time zone 'UTC' - interval '1 day')", [alice])
+      const before = await client.query<{ cost: string }>("select public.calculate_monthly_real_cost($1,((now() at time zone 'UTC')::date - interval '1 month')::date) as cost", [alice])
+      await client.query("select public.set_custom_subscription($1,'New name',20,'{codex,opencode}',true)", [id])
+      await client.query("select public.set_custom_subscription($1,'Updated name',21,'{codex,opencode}',true)", [id])
+      const periods = await client.query<{ name: string; monthly_price_usd: string; active: boolean }>('select name,monthly_price_usd,active from public.custom_subscriptions where subscription_id=$1 order by started_at', [id])
+      expect(periods.rows).toEqual([{ name: 'Old name', monthly_price_usd: '9.00', active: false }, { name: 'Updated name', monthly_price_usd: '21.00', active: true }])
+      const after = await client.query<{ cost: string }>("select public.calculate_monthly_real_cost($1,((now() at time zone 'UTC')::date - interval '1 month')::date) as cost", [alice])
+      expect(after.rows).toEqual(before.rows)
+    })
+  })
+
+  it('stops future custom counting without cancelling or erasing recorded periods', async () => {
+    await asUser(alice, async client => {
+      const created = await client.query<{ id: string }>("select public.set_custom_subscription(null,'Extra plan',5,'{codex}',true) as id")
+      const id = created.rows[0].id
+      await client.query("insert into public.usage_events (user_id,tool,event_type,event_id,occurred_at) values ($1,'codex','model_request',repeat('e',64),greatest(date_trunc('month',now() at time zone 'UTC') at time zone 'UTC',now()-interval '1 second'))", [alice])
+      const before = await client.query<{ cost: string }>("select public.calculate_monthly_real_cost($1,(now() at time zone 'UTC')::date) as cost", [alice])
+      await client.query("select public.set_custom_subscription($1,'Extra plan',5,'{codex}',false)", [id])
+      const after = await client.query<{ cost: string }>("select public.calculate_monthly_real_cost($1,(now() at time zone 'UTC')::date) as cost", [alice])
+      expect(after.rows).toEqual(before.rows)
+      const saved = await client.query<{ active: boolean; ended: boolean }>('select active,ended_at is not null as ended from public.custom_subscriptions where subscription_id=$1', [id])
+      expect(saved.rows).toEqual([{ active: false, ended: true }])
+    })
+  })
+
+  it.each([
+    [null, 1, ['codex']], ['', 1, ['codex']], ['x'.repeat(101), 1, ['codex']],
+    ['Plan', -1, ['codex']], ['Plan', 1.123, ['codex']], ['Plan', 100_000_000, ['codex']],
+    ['Plan', 1, []], ['Plan', 1, ['unknown']], ['Plan', 1, null],
+  ])('validates custom fields at the database boundary (%s, %s, %j)', async (name, price, tools) => {
+    await expect(asUser(alice, client => client.query('select public.set_custom_subscription(null,$1,$2,$3,true)', [name, price, tools]))).rejects.toThrow()
   })
 
   it('permits receipt replacement but not moving a receipt to another user', async () => {
