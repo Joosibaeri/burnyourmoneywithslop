@@ -46,7 +46,7 @@ export function Layout({ children }: { children?: ReactNode }) {
           alignItems: 'center',
           justifyContent: 'space-between',
         }}>
-          <NavLink to="/" style={{
+          <NavLink to="/" className="desktop-only" style={{
             display: 'flex',
             alignItems: 'center',
             gap: 10,
@@ -63,12 +63,11 @@ export function Layout({ children }: { children?: ReactNode }) {
               fontSize: '1.25rem',
             }}>💸</span>
             <span className="brand-title">
-              <span className="brand-title-full">How Much Money Did You Already Burned With Slop</span>
-              <span className="brand-title-mobile">Burn Your Money With Slop</span>
+              How Much Money Did You Already Burned With Slop
             </span>
           </NavLink>
 
-          <nav style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <nav className="desktop-only" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {navItems.map(({ path, label, icon: Icon }) => (
               <NavLink
                 key={path}
@@ -80,7 +79,7 @@ export function Layout({ children }: { children?: ReactNode }) {
                   gap: 8,
                   padding: '10px 16px',
                   borderRadius: 'var(--radius-sm)',
-                    color: isActive ? 'var(--accent)' : 'var(--fg-muted)',
+                  color: isActive ? 'var(--accent)' : 'var(--fg-muted)',
                   background: isActive ? 'var(--accent-bg)' : 'transparent',
                   fontWeight: 500,
                   fontSize: '0.9rem',
@@ -95,50 +94,51 @@ export function Layout({ children }: { children?: ReactNode }) {
           </nav>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            {user ? (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '6px 12px',
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
-              }}>
-                <img
-                  src={user.user_metadata?.avatar_url || `https://github.com/${login || 'user'}.png`}
-                  alt=""
-                  style={{ width: 28, height: 28, borderRadius: '50%' }}
-                />
-                <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
-                  @{login || 'user'}
-                </span>
-                <button
-                  onClick={handleSignOut}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 32, height: 32,
-                    borderRadius: 6,
-                    color: 'var(--fg-muted)',
-                    background: 'transparent',
-                  }}
-                  aria-label="Sign out"
-                >
-                  <LogOut size={18} />
-                </button>
-              </div>
-            ) : (
-              <Link to="/login" state={{ returnTo: location.pathname + location.search }}>
-                <Button disabled={loading}><LogIn size={18} /> Sign In</Button>
-              </Link>
-            )}
+            <div className="desktop-only" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {user ? (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '6px 12px',
+                  background: 'var(--bg-card)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                }}>
+                  <img
+                    src={user.user_metadata?.avatar_url || `https://github.com/${login || 'user'}.png`}
+                    alt=""
+                    style={{ width: 28, height: 28, borderRadius: '50%' }}
+                  />
+                  <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+                    @{login || 'user'}
+                  </span>
+                  <button
+                    onClick={handleSignOut}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 32, height: 32,
+                      borderRadius: 6,
+                      color: 'var(--fg-muted)',
+                      background: 'transparent',
+                    }}
+                    aria-label="Sign out"
+                  >
+                    <LogOut size={18} />
+                  </button>
+                </div>
+              ) : (
+                <Link to="/login" state={{ returnTo: location.pathname + location.search }}>
+                  <Button disabled={loading}><LogIn size={18} /> Sign In</Button>
+                </Link>
+              )}
+            </div>
 
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               style={{
-                display: 'none',
                 alignItems: 'center',
                 justifyContent: 'center',
                 width: 40, height: 40,
@@ -147,6 +147,7 @@ export function Layout({ children }: { children?: ReactNode }) {
                 background: 'transparent',
               }}
               aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={mobileMenuOpen}
               className="mobile-menu-toggle"
             >
               {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
@@ -155,7 +156,7 @@ export function Layout({ children }: { children?: ReactNode }) {
         </div>
 
         {mobileMenuOpen && (
-          <div style={{
+          <div className="mobile-menu-panel" style={{
             padding: '16px 24px',
             borderTop: '1px solid var(--border)',
             background: 'var(--bg)',
@@ -185,6 +186,58 @@ export function Layout({ children }: { children?: ReactNode }) {
                 </NavLink>
               ))}
             </nav>
+
+            <div style={{
+              marginTop: 12,
+              paddingTop: 12,
+              borderTop: '1px solid var(--border)',
+            }}>
+              {user ? (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '8px 16px',
+                }}>
+                  <img
+                    src={user.user_metadata?.avatar_url || `https://github.com/${login || 'user'}.png`}
+                    alt=""
+                    style={{ width: 28, height: 28, borderRadius: '50%' }}
+                  />
+                  <span style={{ flex: 1, fontSize: '0.95rem', fontWeight: 500 }}>
+                    @{login || 'user'}
+                  </span>
+                  <button
+                    onClick={() => { setMobileMenuOpen(false); handleSignOut() }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      padding: '8px 12px',
+                      borderRadius: 'var(--radius-sm)',
+                      color: 'var(--fg-muted)',
+                      background: 'transparent',
+                      fontSize: '0.9rem',
+                    }}
+                    aria-label="Sign out"
+                  >
+                    <LogOut size={18} />
+                    <span>Sign out</span>
+                  </button>
+                </div>
+              ) : (
+                <Link
+                  to="/login"
+                  state={{ returnTo: location.pathname + location.search }}
+                  onClick={() => setMobileMenuOpen(false)}
+                  style={{ display: 'block', padding: '4px 16px' }}
+                >
+                  <Button disabled={loading} style={{ width: '100%' }}>
+                    <LogIn size={18} /> Sign In
+                  </Button>
+                </Link>
+              )}
+            </div>
           </div>
         )}
       </header>
@@ -225,6 +278,6 @@ export function Layout({ children }: { children?: ReactNode }) {
         </div>
       </footer>
 
-      </div>
+    </div>
   )
 }
