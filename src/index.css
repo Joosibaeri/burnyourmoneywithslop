@@ -111,12 +111,6 @@ code, pre, kbd, samp {
   }
 
   .brand-title {
-    max-width: 150px;
-    font-size: 1rem;
-    line-height: 1.15;
-  }
-
-  .brand-title-full {
     display: none;
   }
 }
