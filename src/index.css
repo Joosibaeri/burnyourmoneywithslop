@@ -109,6 +109,26 @@ code, pre, kbd, samp {
   nav > .mobile-menu-toggle ~ * {
     display: none;
   }
+
+  .brand-title {
+    max-width: 150px;
+    font-size: 1rem;
+    line-height: 1.15;
+  }
+
+  .brand-title-full {
+    display: none;
+  }
+}
+
+.brand-title-mobile {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .brand-title-mobile {
+    display: inline;
+  }
 }
 
 .container {
