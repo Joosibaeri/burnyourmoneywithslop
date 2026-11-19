@@ -40,7 +40,7 @@ export function Layout({ children }: { children?: ReactNode }) {
         borderBottom: '1px solid var(--border)',
         padding: '0 24px',
       }}>
-        <div className="container" style={{
+        <div className="container header-inner" style={{
           height: 64,
           display: 'flex',
           alignItems: 'center',
