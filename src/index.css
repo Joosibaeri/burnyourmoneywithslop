@@ -102,19 +102,31 @@ code, pre, kbd, samp {
   to { transform: rotate(360deg); }
 }
 
-/* Mobile menu button: hidden on desktop, shown on mobile */
+/* Mobile menu button: hidden by default, shown on mobile */
 .mobile-menu-toggle {
   display: none;
 }
 
+/* Tablets (e.g. iPad, up to 1024px): only the long title is removed */
+@media (max-width: 1024px) {
+  .brand-title {
+    display: none !important;
+  }
+}
+
+/* Mobile (up to 768px): the whole top bar is replaced by the menu button */
 @media (max-width: 768px) {
-  /* Replace the whole top bar content with just the menu button */
   .desktop-only {
     display: none !important;
   }
 
   .mobile-menu-toggle {
     display: flex !important;
+  }
+
+  /* Menu button sits on the right of the header */
+  .header-inner {
+    justify-content: flex-end !important;
   }
 }
 
