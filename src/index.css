@@ -102,26 +102,19 @@ code, pre, kbd, samp {
   to { transform: rotate(360deg); }
 }
 
-@media (max-width: 768px) {
-  .mobile-menu-toggle {
-    display: flex !important;
-  }
-  nav > .mobile-menu-toggle ~ * {
-    display: none;
-  }
-
-  .brand-title {
-    display: none;
-  }
-}
-
-.brand-title-mobile {
+/* Mobile menu button: hidden on desktop, shown on mobile */
+.mobile-menu-toggle {
   display: none;
 }
 
 @media (max-width: 768px) {
-  .brand-title-mobile {
-    display: inline;
+  /* Replace the whole top bar content with just the menu button */
+  .desktop-only {
+    display: none !important;
+  }
+
+  .mobile-menu-toggle {
+    display: flex !important;
   }
 }
 
