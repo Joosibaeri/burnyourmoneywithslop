@@ -46,6 +46,20 @@ function sanitized(event: UsageEvent): UsageEvent {
   return { ...clean, event_id: event.event_id, session_id: event.session_id }
 }
 
+export async function readQueuedEvents(directory: string, credentials: Credentials): Promise<UsageEvent[]> {
+  const pending = queueDirectory(directory, credentials)
+  const names = await readdir(pending).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return []
+    throw error
+  })
+  const events: UsageEvent[] = []
+  for (const name of names.filter(name => /^[a-f0-9]{64}\.json$/.test(name))) {
+    try { events.push(sanitized(JSON.parse(await readFile(join(pending, name), 'utf8')) as UsageEvent)) }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+  }
+  return events
+}
+
 export async function enqueueEvents(events: UsageEvent[], directory = configDirectory()): Promise<void> {
   if (!events.length) return
   await withLock(directory, async () => {

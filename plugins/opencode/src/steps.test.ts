@@ -58,4 +58,40 @@ describe('OpenCode V2 step collection', () => {
     const collector = new OpenCodeSteps()
     expect(collector.accept(end())?.event_id).toBe(collector.accept(end())?.event_id)
   })
+  it('deduplicates one request across different transport boundaries but retains identical genuine requests', () => {
+    const collector = new OpenCodeSteps()
+    expect(collector.accept(end())?.event_id).toBe(collector.accept({ ...end(), id: 'another-transport-boundary' })?.event_id)
+    expect(collector.accept(end())?.event_id).not.toBe(collector.accept(end('another-genuine-request'))?.event_id)
+  })
+  it('preserves separate paid failed attempts when retries reuse an assistant message ID', () => {
+    const collector = new OpenCodeSteps()
+    const first = collector.accept({ ...end(), type: 'session.step.failed', id: 'failed-attempt-a' })!
+    const second = collector.accept({ ...end(), type: 'session.step.failed', id: 'failed-attempt-b' })!
+    const successful = collector.accept(end())!
+    expect(new Set([first.event_id, second.event_id, successful.event_id]).size).toBe(3)
+    expect(collector.accept({ ...end(), type: 'session.step.failed', id: 'failed-attempt-a' })?.event_id).toBe(first.event_id)
+  })
+  it('collects live compactions once with the saved message identity, including a missed start', () => {
+    const collector = new OpenCodeSteps()
+    const compacted = { id: 'compact-message', type: 'compaction', status: 'completed', time: { created: end().created - 20 },
+      tokens: { ...tokens, input: 1_300_000 }, model: { providerID: 'provider', id: 'model' }, cost: 0.02 }
+    collector.accept({ type: 'session.compaction.started', id: 'compact-start', created: end().created - 19,
+      data: { sessionID: 'local-session' } }, [{ ...compacted, status: 'running', tokens: undefined }])
+    const event = { type: 'session.compaction.ended' as const, id: 'compact-end', created: end().created,
+      data: { sessionID: 'local-session', tokens: compacted.tokens, cost: compacted.cost } }
+    const first = collector.accept(event, [compacted])!
+    expect(first.input_tokens).toBe(1_300_000)
+    expect(first.model).toBe('provider/model')
+    expect(collector.accept(event, [compacted])?.event_id).toBe(first.event_id)
+  })
+  it('counts usage-bearing failed compactions without guessing from an older summary', () => {
+    const collector = new OpenCodeSteps()
+    const event = { type: 'session.compaction.failed' as const, id: 'failure', created: end().created,
+      data: { sessionID: 'local-session', tokens, cost: 0.01 } }
+    const message = { id: 'failed-compact', type: 'compaction', status: 'failed', time: { created: end().created - 1 }, tokens, cost: 0.01 }
+    expect(collector.accept(event, [message])?.input_tokens).toBe(100)
+    expect(() => collector.accept(event, [{ ...message, status: 'completed' }])).toThrow('unavailable')
+    expect(() => collector.accept(event, [{ ...message, tokens: { ...tokens, input: 1 } }])).toThrow('unavailable')
+    expect(collector.accept({ ...event, data: { sessionID: 'local-session' } })).toBeNull()
+  })
 })

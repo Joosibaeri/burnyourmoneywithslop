@@ -34,6 +34,12 @@ function renderGroup() { render(<MemoryRouter><GroupDetail /></MemoryRouter>) }
 function leaderboardRows() { return within(screen.getByRole('region', { name: 'Group leaderboard exact statistics' })).getAllByRole('row').slice(1) }
 
 describe('independent group comparisons', () => {
+  it('defaults the leaderboard and comparison chart to In + Out, excluding cache', () => {
+    renderGroup()
+    expect(screen.getByRole('combobox', { name: 'Compare by' })).toHaveValue('input_output')
+    expect(within(leaderboardRows()[0]).getByRole('link', { name: 'finn' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Group In + Out tokens by UTC month' })).toBeInTheDocument()
+  })
   it.each([['spent', 'dan', 'Real spending'], ['input', 'dan', 'In tokens'], ['output', 'erin', 'Out tokens'], ['input_output', 'finn', 'In + Out tokens'], ['total', 'gina', 'Cached + In + Out tokens'], ['cached', 'gina', 'Cached tokens'], ['reasoning', 'erin', 'Reasoning tokens']] as const)('re-ranks every member and the trend chart by %s', (metric, top, label) => {
     renderGroup()
     fireEvent.change(screen.getByRole('combobox', { name: 'Compare by' }), { target: { value: metric } })
@@ -48,12 +54,13 @@ describe('independent group comparisons', () => {
     for (const label of ['In tokens', 'Out tokens', 'In + Out tokens', 'Cached + In + Out tokens', 'Cached tokens', 'Cache read tokens', 'Cache write tokens', 'Reasoning tokens', 'Estimated model cost']) expect(within(table).getByRole('button', { name: `Rank by ${label}` })).toBeInTheDocument()
     expect(within(table).queryByRole('button', { name: 'Rank by Uncached input tokens' })).not.toBeInTheDocument()
     expect(within(leaderboardRows()[1]).getByText('50,500')).toBeInTheDocument()
-    expect(screen.getByRole('img', { name: 'Group Real spending by UTC month' }).querySelectorAll('polyline')).toHaveLength(7)
+    expect(screen.getByRole('img', { name: 'Group In + Out tokens by UTC month' }).querySelectorAll('polyline')).toHaveLength(7)
     expect(screen.getByLabelText('Exact token statistics')).toBeInTheDocument()
   })
 
   it('can compare historical UTC months and all time without reusing current-month totals', () => {
     renderGroup()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Compare by' }), { target: { value: 'spent' } })
     fireEvent.change(screen.getByLabelText('UTC month'), { target: { value: '2025-01' } })
     expect(within(leaderboardRows()[0]).getByRole('link', { name: 'gina' })).toBeInTheDocument()
     expect(within(leaderboardRows()[0]).getByText('$1,000.00')).toBeInTheDocument()

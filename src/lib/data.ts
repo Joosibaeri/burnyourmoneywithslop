@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { SUBSCRIPTION_CATALOG, addRecordedUsd, getMockGroups, getMockMonthlyData } from './utils'
-import { addTokenTotals, demoTokenTotals, emptyTokenTotals, tokenTotalsFromRecord, tokenValue, type TokenCounterRecord, type TokenTotals } from './tokens'
+import { DEFAULT_TOKEN_METRIC, addTokenTotals, demoTokenTotals, emptyTokenTotals, tokenTotalsFromRecord, tokenValue, type TokenCounterRecord, type TokenTotals } from './tokens'
 import { rankMembers, type ComparisonMember, type ComparisonMetric, type ComparisonStats, type RankedMember } from './comparison'
 
 export interface UsageSummary extends TokenCounterRecord {
@@ -211,7 +211,7 @@ export async function loadGroups(supabase: SupabaseClient, userId: string, group
       const stats = aggregateUsage(rows.filter(row => row.month.startsWith(currentMonth)))
       return { id: String(member.user_id), name: profile?.display_name || profile?.github_login || 'Member', login: profile?.github_login || '', avatar: profile?.avatar_url || '', spent: stats.totalSpent, estimated: stats.totalEstimated, tokens: stats.totalTokens, tokenTotals: stats.tokenTotals, unknownCostEvents: stats.unknownCostEvents, tools: stats.toolBreakdown.map(tool => tool.name), monthlyUsage: history.monthlyData }
     })
-    const sorted = rankMembers(members, 'spent')
+    const sorted = rankMembers(members, DEFAULT_TOKEN_METRIC)
     return {
       id: String(group.id), name: String(group.name), description: group.description || '', ownerId: String(group.owner_id), inviteCode: String(group.invite_code),
       members, memberCount: members.length, totalSpent: members.reduce((sum, member) => addRecordedUsd(sum, member.spent), 0), totalTokens: members.reduce((sum, member) => sum + member.tokens, 0),

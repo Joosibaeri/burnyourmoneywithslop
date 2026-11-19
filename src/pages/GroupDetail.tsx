@@ -13,7 +13,7 @@ import { useState } from 'react'
 import { formatCurrencyPrecise as formatCurrency } from '@/lib/utils'
 import { comparisonStatsForMonth, getDemoGroups, groupMembersForMonth, recentUsageMonths, setDemoGroups, type GroupData } from '@/lib/data'
 import { comparisonLabel, comparisonRatio, comparisonValue, formatComparisonValue, rankMembers, sumComparisonStats, type ComparisonMetric, type ComparisonStats } from '@/lib/comparison'
-import { formatTokenCount, tokenValue } from '@/lib/tokens'
+import { DEFAULT_TOKEN_METRIC, formatTokenCount, tokenValue } from '@/lib/tokens'
 
 export function GroupDetail() {
   const { id } = useParams<{ id: string }>()
@@ -26,7 +26,7 @@ export function GroupDetail() {
   const [copiedLink, setCopiedLink] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [metric, setMetric] = useState<ComparisonMetric>('spent')
+  const [metric, setMetric] = useState<ComparisonMetric>(DEFAULT_TOKEN_METRIC)
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
 
   if (loading) return <p role="status">Loading group…</p>

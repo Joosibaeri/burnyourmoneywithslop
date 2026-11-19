@@ -31,6 +31,13 @@ async function renderDashboard() {
 }
 
 describe('exact dashboard statistics and filters', () => {
+  it('defaults personal counts, history and the comparison preview to In + Out', async () => {
+    await renderDashboard()
+    expect(screen.getByRole('combobox', { name: 'Token metric' })).toHaveValue('input_output')
+    expect(within(screen.getByText('Selected Tokens').parentElement!).getByText('1,237,143')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'In + Out tokens by UTC month' })).toBeInTheDocument()
+    await waitFor(() => expect(loadGlobalRanking).toHaveBeenLastCalledWith(client, month, 'input_output', 5))
+  })
   it('shows every exact token category and removes the active-tools and groups tiles/query', async () => {
     await renderDashboard()
     const definitions = screen.getByLabelText('Exact token statistics')

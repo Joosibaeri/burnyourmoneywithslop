@@ -49,12 +49,21 @@ See [the installation guide](docs/PLUGIN_INSTALL.md) for configuration locations
 
 | Tool | Source | Important limits |
 | --- | --- | --- |
-| OpenCode V2 | Ordered `session.step.started`, `.ended`, `.failed` events | Live steps only; exact dispatched model retained; cumulative session totals ignored |
+| OpenCode V2 | Ordered step/compaction events; explicit saved-request API import | Primary requests and compactions; stable message identities; cumulative session totals ignored |
 | Claude Code | Local assistant/subagent transcript counters via Stop, StopFailure, SubagentStop, SessionStart and SessionEnd | Best-effort transcript snapshots can lag; explicit local imports recover late entries |
 | Codex | Paired synchronous PreModelRequest/PostModelRequest hooks, background Stop upload | One durable identity per live attempt, including retries and subagents; not arbitrary historical hook replay |
 | Cursor | Documented `/v2/teams/billing-items` JSON exports | Explicit importing-user filter; requires a Team API export; ordinary dashboard CSVs and transcripts aren't guessed |
 
 Retries use stable opaque event IDs and never add usage twice. Identical genuine requests remain separate. Input/cache and output/reasoning counters are disjoint; reasoning already included in a provider's output counter isn't counted again.
+
+**Existing OpenCode usage is not imported by installing a live collector.** With OpenCode V2 running, preview and explicitly backfill saved assistant/compaction requests:
+
+```sh
+npm run opencode:import -- --dry-run
+npm run opencode:import -- --since 2026-11-01
+```
+
+The importer reads native saved request counters, not cumulative session totals or prompt lengths. It reconciles existing/pending uploads before queuing missing requests, including records made by the older collector. Compactions can consume substantial clean input and are now collected live too. Title/transient-generation usage without an exposed saved per-request record is not reconstructed. See [installation/import details](docs/PLUGIN_INSTALL.md#opencode-v2).
 
 ```sh
 npm run collector -- status
@@ -81,6 +90,7 @@ The catalogue includes Claude Pro/Max, ChatGPT allowance tiers, current and lega
 
 ## Token filters and rankings
 
+- **In + Out** is the default comparison on the dashboard, groups/group previews and global ranking. Cached tokens stay excluded; other metrics remain selectable and linked ranking filters are preserved.
 - The dashboard shows exact, unabridged token counts. Its **Token metric** filter updates the selected total, monthly token history, tool breakdown and global-ranking preview.
 - **In** = all **uncached** input sent to the model: your prompts, system instructions, conversation context and tool answers. It is not limited to the text you type. **Cached** stays separate and includes both cache reads and writes; there is no extra Uncached input field.
 - **Out** = output including separately reported reasoning. **In + Out** excludes cache. **Cached + In + Out** includes every category exactly once. Cache-read, cache-write and reasoning counts are also available separately as breakdowns, not extra totals.

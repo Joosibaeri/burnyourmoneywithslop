@@ -11,6 +11,7 @@ import { useSupabase } from '@/contexts/SupabaseContext'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { getDemoGlobalRanking, loadGlobalRanking } from '@/lib/data'
 import { COMPARISON_OPTIONS, comparisonLabel, type ComparisonMetric } from '@/lib/comparison'
+import { DEFAULT_TOKEN_METRIC } from '@/lib/tokens'
 
 const PAGE_SIZE = 50
 
@@ -20,7 +21,7 @@ export function Ranking() {
   const [params, setParams] = useSearchParams()
   const initialMetric = params.get('metric')
   const initialMonth = params.get('month')
-  const [metric, setMetric] = useState<ComparisonMetric>(COMPARISON_OPTIONS.some(option => option.value === initialMetric) ? initialMetric as ComparisonMetric : 'total')
+  const [metric, setMetric] = useState<ComparisonMetric>(COMPARISON_OPTIONS.some(option => option.value === initialMetric) ? initialMetric as ComparisonMetric : DEFAULT_TOKEN_METRIC)
   const [month, setMonth] = useState(initialMonth === 'all' || /^\d{4}-(0[1-9]|1[0-2])$/.test(initialMonth ?? '') ? initialMonth! : new Date().toISOString().slice(0, 7))
   const [page, setPage] = useState(0)
   const load = useCallback(() => isDemoMode ? Promise.resolve(getDemoGlobalRanking(month, metric, PAGE_SIZE, page * PAGE_SIZE)) : loadGlobalRanking(supabase, month, metric, PAGE_SIZE, page * PAGE_SIZE), [supabase, isDemoMode, month, metric, page])

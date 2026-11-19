@@ -30,6 +30,7 @@ export const TOKEN_METRICS = [
 ] as const
 
 export type TokenMetric = typeof TOKEN_METRICS[number]['id']
+export const DEFAULT_TOKEN_METRIC: TokenMetric = 'input_output'
 
 export function emptyTokenTotals(): TokenTotals {
   return { input: 0n, output: 0n, reasoning: 0n, cacheRead: 0n, cacheWrite: 0n }

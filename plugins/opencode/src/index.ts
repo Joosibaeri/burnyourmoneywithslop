@@ -33,11 +33,16 @@ export default Plugin.define({
     // preserves the dispatched model even if the session switches models later.
     const running = (async () => {
       for await (const event of ctx.event.subscribe({
-        types: ['session.step.started', 'session.step.ended', 'session.step.failed'],
+        types: ['session.step.started', 'session.step.ended', 'session.step.failed',
+          'session.compaction.started', 'session.compaction.ended', 'session.compaction.failed'],
         signal: controller.signal,
       })) {
         try {
-          const usage = steps.accept(event)
+          // The context contains the newest compaction's immutable message ID;
+          // use it so live collection and historical importing share one identity.
+          const messages = event.type === 'session.compaction.started' || event.type === 'session.compaction.ended' || event.type === 'session.compaction.failed'
+            ? await ctx.session.context({ sessionID: event.data.sessionID }) : []
+          const usage = steps.accept(event, messages)
           if (!usage) continue
           await enqueueEvents([usage], directory)
           void flush()

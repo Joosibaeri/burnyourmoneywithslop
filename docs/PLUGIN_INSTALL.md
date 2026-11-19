@@ -53,9 +53,30 @@ The local package is `plugins/opencode`, with its default export at `dist/index.
 
 Configuration reloads automatically; `/reload` forces a reload. Do not restart the shared OpenCode service just to apply a plugin change.
 
-The plugin consumes one ordered live stream of started/ended/failed steps, correlating `assistantMessageID` with the exact dispatched model. It uploads reported per-step counters/cost, never cumulative `session.usage.updated` totals. Enabling it does not import historical sessions. If a start wasn't observed, the model remains unknown rather than being guessed from a later session selection. Usage-bearing failed steps are included.
+The plugin consumes one ordered live stream of started/ended/failed steps and compactions. Primary requests correlate `assistantMessageID` with the exact dispatched model. Compactions use the saved completed/failed compaction message's identity and reported counters/cost. It never uploads cumulative `session.usage.updated` totals. If a primary start wasn't observed, the model remains unknown rather than being guessed from a later session selection. Usage-bearing failed requests are included.
 
 Input comes from the full model request's reported usage, including tool-driven continuations—not the length of the user's prompt. **In** includes all input classified as uncached, including system instructions and tool answers. Context classified as a cache read or write stays in **Cached**, regardless of its source. The collector never reads prompt/system/tool contents to estimate or relabel counts. A tool answer contributes when it is sent in a model request, not merely because a tool ran.
+
+#### Import existing OpenCode history
+
+Installing the live plugin does **not** import earlier sessions. If the dashboard is much smaller than your local totals, use the explicit saved-request importer. After updating an older collector, rebuild it and use **`/reload`** in OpenCode before importing so the live collector uses the same message identities.
+
+```sh
+npm run collectors:build
+# In OpenCode: /reload
+npm run opencode:import -- --dry-run
+npm run opencode:import -- --since 2026-11-01
+# Repeating the same import must not add those requests again.
+npm run opencode:import -- --since 2026-11-01
+```
+
+Keep OpenCode V2 running. The importer discovers its existing local service and authentication using the pinned native client; it does not start/restart the service or change provider credentials. Dry run makes **no Supabase requests**, writes nothing, and prints exact saved In/Out/Cached totals, including requests that may already be uploaded.
+
+Without `--since`, all available saved history is considered. Optional `--session-id SESSION_ID` selects one session; `--since`/`--until` accept UTC dates or timestamps with an explicit timezone. Bounds are start-inclusive/end-exclusive. `--config-dir /absolute/private/path` selects the collector account. Use a bounded date range and flush between ranges if a large backfill exceeds the private queue limit.
+
+The real import uses the signed-in collector's **owner-only** usage reads to reconcile existing uploads and pending metrics, then sends only missing requests through authenticated ingestion. New live/imported completed primary and compaction requests share hashes of their immutable native message IDs. Paid failed primary attempts retain separate boundary identities because a retry may reuse the assistant ID and replace its projected counters. Older boundary-ID uploads are reconciled only when the hashed session, exact timestamp and every token category match uniquely; ambiguous/conflicting overlap is rejected instead of guessing. Existing records are not overwritten or discarded when they are absent from current local history. Retries, overlapping import windows and copied fork history must not inflate usage.
+
+Only whitelisted reported counters, costs, models, timestamps and opaque identities are queued/uploaded. Prompt text, tool contents, native replies, compaction summaries and paths are not used to calculate counts and are not copied/uploaded. Running/partial messages are skipped. OpenCode **2.3.2** does not expose internal `session.usage.recorded` events through its public live stream; titles/transient generations without saved per-request records remain unavailable. Do not derive synthetic gap events from cumulative session totals.
 
 ### Claude Code
 

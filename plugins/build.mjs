@@ -5,7 +5,7 @@ import { promisify } from 'node:util'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const entries = [
-  ['collector', 'index'], ['opencode', 'index'],
+  ['collector', 'index'], ['opencode', 'index'], ['opencode', 'import-usage'],
   ['claude-code', 'stop-hook'], ['claude-code', 'session-end-hook'],
   ['claude-code', 'subagent-stop-hook'], ['claude-code', 'import-usage'],
   ['codex', 'pre-model-request'], ['codex', 'post-model-request'], ['codex', 'stop-hook'], ['cursor', 'import-usage'],
@@ -19,3 +19,4 @@ await Promise.all(entries.filter(([tool]) => !selected || tool === selected).map
 })))
 // Source-level tests alone cannot detect an ESM bundle's dynamic-require errors.
 if (!selected || selected === 'collector') await promisify(execFile)(process.execPath, ['plugins/collector/dist/index.js', '--help'], { cwd: root })
+if (!selected || selected === 'opencode') await promisify(execFile)(process.execPath, ['plugins/opencode/dist/import-usage.js', '--help'], { cwd: root })

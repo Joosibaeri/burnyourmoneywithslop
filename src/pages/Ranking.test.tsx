@@ -31,7 +31,8 @@ async function renderRanking(path = '/ranking') {
 describe('public global ranking', () => {
   it('works without sign-in and displays exact counts, GitHub identity and partial model estimates', async () => {
     await renderRanking()
-    expect(loadGlobalRanking).toHaveBeenCalledWith(client, month, 'total', 50, 0)
+    expect(loadGlobalRanking).toHaveBeenCalledWith(client, month, 'input_output', 50, 0)
+    expect(screen.getByRole('combobox', { name: 'Compare by' })).toHaveValue('input_output')
     expect(screen.getByRole('link', { name: 'Public Friend' })).toHaveAttribute('href', '/@publicfriend')
     expect(screen.getByText('@publicfriend')).toBeInTheDocument()
     expect(screen.getByText('9,007,199,254,740,993')).toBeInTheDocument()
@@ -65,7 +66,7 @@ describe('public global ranking', () => {
     await renderRanking()
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
     expect(await screen.findByRole('link', { name: 'Last Friend' })).toBeInTheDocument()
-    expect(loadGlobalRanking).toHaveBeenLastCalledWith(client, month, 'total', 50, 50)
+    expect(loadGlobalRanking).toHaveBeenLastCalledWith(client, month, 'input_output', 50, 50)
     expect(screen.getByText('#51')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
     fireEvent.change(screen.getByRole('combobox', { name: 'Compare by' }), { target: { value: 'output' } })

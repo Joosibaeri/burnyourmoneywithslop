@@ -171,7 +171,7 @@ function GroupCard({ group }: { group: GroupData }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
           <StatMini title="Members" value={group.memberCount} />
           <StatMini title="Total Spent" value={formatCurrency(group.totalSpent)} />
-          <StatMini title="Total Tokens" value={formatTokenCount(tokenValue(sumComparisonStats(group.members).tokenTotals, 'total'))} />
+          <StatMini title="In + Out Tokens" value={formatTokenCount(tokenValue(sumComparisonStats(group.members).tokenTotals, 'input_output'))} />
         </div>
         <div style={{
           padding: '12px',
@@ -184,7 +184,7 @@ function GroupCard({ group }: { group: GroupData }) {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.875rem' }}>
             <TrendingUp size={16} color="var(--success)" />
-            <span>Your rank: <strong>#{group.yourRank}</strong> of {group.memberCount}</span>
+            <span>Your rank: <strong>#{group.yourRank}</strong> of {group.memberCount} · In + Out</span>
           </div>
         </div>
       </CardContent>

@@ -12,7 +12,7 @@ import { Plus, TrendingUp, DollarSign, Activity, ArrowUpRight, User, Globe } fro
 import { useCallback, useState } from 'react'
 import { formatCurrencyPrecise as formatCurrency, getMockStats, getMockMonthlyData } from '@/lib/utils'
 import { aggregateUsage, dashboardStats, emptyStats, githubLogin, loadCustomSubscriptions, loadSubscriptions, loadUsage, recentUsageMonths, type DisplaySubscription, type ToolUsage } from '@/lib/data'
-import { emptyTokenTotals, formatTokenCount, TOKEN_METRICS, tokenMetricInfo, tokenRatio, tokenValue, type TokenMetric } from '@/lib/tokens'
+import { DEFAULT_TOKEN_METRIC, emptyTokenTotals, formatTokenCount, TOKEN_METRICS, tokenMetricInfo, tokenRatio, tokenValue, type TokenMetric } from '@/lib/tokens'
 import { useAsyncData } from '@/hooks/useAsyncData'
 
 export function Dashboard() {
@@ -21,7 +21,7 @@ export function Dashboard() {
   const navigate = useNavigate()
   const userId = user?.id
   const [selectedPeriod, setSelectedPeriod] = useState<'month' | 'quarter' | 'year'>('month')
-  const [tokenMetric, setTokenMetric] = useState<TokenMetric>('total')
+  const [tokenMetric, setTokenMetric] = useState<TokenMetric>(DEFAULT_TOKEN_METRIC)
 
   const load = useCallback(async () => {
     if (!userId) throw new Error('Sign in to load usage.')
