@@ -62,7 +62,10 @@ export function Layout({ children }: { children?: ReactNode }) {
               borderRadius: 8,
               fontSize: '1.25rem',
             }}>💸</span>
-            <span>How Much Money Did You Already Burned With Slop</span>
+            <span className="brand-title">
+              <span className="brand-title-full">How Much Money Did You Already Burned With Slop</span>
+              <span className="brand-title-mobile">Burn Your Money With Slop</span>
+            </span>
           </NavLink>
 
           <nav style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
