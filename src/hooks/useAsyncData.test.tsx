@@ -1,5 +1,5 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { useAsyncData } from './useAsyncData'
 
 afterEach(cleanup)
@@ -39,6 +39,20 @@ describe('request-scoped UI data', () => {
     const load = async () => 'should-not-load'
     const hook = renderHook(() => useAsyncData(null, load))
     await act(async () => {})
-    expect(hook.result.current).toEqual({ data: null, error: null, loading: false })
+    expect(hook.result.current).toMatchObject({ data: null, error: null, loading: false })
+    expect(hook.result.current.reload).toBeTypeOf('function')
+  })
+  it('retries a failed request and hides the stale error during the retry', async () => {
+    const retry = deferred<string>()
+    const load = vi.fn().mockRejectedValueOnce(new Error('temporarily unavailable')).mockReturnValueOnce(retry.promise)
+    const hook = renderHook(() => useAsyncData('ranking:input', load))
+    await act(async () => {})
+    expect(hook.result.current.error).toBe('temporarily unavailable')
+    act(() => hook.result.current.reload())
+    expect(hook.result.current.error).toBeNull()
+    expect(hook.result.current.loading).toBe(true)
+    await act(async () => { retry.resolve('current-ranking') })
+    expect(hook.result.current.data).toBe('current-ranking')
+    expect(load).toHaveBeenCalledTimes(2)
   })
 })

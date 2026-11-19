@@ -1,6 +1,6 @@
 import { Link, NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
-import { Menu, X, LogOut, Users, Settings, Home, GitBranch, LogIn } from 'lucide-react'
+import { Menu, X, LogOut, Users, Settings, Home, GitBranch, LogIn, Globe } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { ReactNode } from 'react'
@@ -20,10 +20,12 @@ export function Layout({ children }: { children?: ReactNode }) {
   const authNavItems = [
     { path: '/', label: 'Dashboard', icon: Home },
     { path: '/groups', label: 'Groups', icon: Users },
+    { path: '/ranking', label: 'Global Ranking', icon: Globe },
     { path: '/settings', label: 'Settings', icon: Settings },
   ]
 
   const publicNavItems = [
+    { path: '/ranking', label: 'Global Ranking', icon: Globe },
     { path: '/groups', label: 'Groups', icon: Users },
   ]
 

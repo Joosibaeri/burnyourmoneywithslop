@@ -24,9 +24,11 @@ export default defineConfig(({ mode }) => {
       async closeBundle() {
         const out = fileURLToPath(new URL('./dist/', import.meta.url))
         await mkdir(`${out}auth/callback`, { recursive: true })
+        await mkdir(`${out}ranking`, { recursive: true })
         await Promise.all([
           copyFile(`${out}index.html`, `${out}404.html`),
           copyFile(`${out}index.html`, `${out}auth/callback/index.html`),
+          copyFile(`${out}index.html`, `${out}ranking/index.html`),
         ])
       },
     }],

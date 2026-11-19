@@ -9,6 +9,7 @@ import { Onboarding } from '@/pages/Onboarding'
 import { Login } from '@/pages/Login'
 import { AuthCallback } from '@/pages/AuthCallback'
 import { Invite } from '@/pages/Invite'
+import { Ranking } from '@/pages/Ranking'
 import { DemoBanner } from '@/components/DemoBanner'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { SupabaseProvider } from '@/contexts/SupabaseContext'
@@ -79,6 +80,7 @@ function AppRoutes() {
       </Route>
       {/* Public routes - no auth required */}
       <Route element={<PublicLayout />}>
+        <Route path="/ranking" element={<Ranking />} />
         <Route path="/:handle" element={<PublicProfileRoute />} />
         <Route path="/invite/:code" element={<Invite />} />
       </Route>

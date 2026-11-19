@@ -4,11 +4,23 @@
 
 - The custom domain now has a valid certificate. HTTPS returns **200** with normal certificate verification, **Enforce HTTPS** is enabled, and HTTP redirects to HTTPS with **301**. No DNS reset or TLS bypass is needed.
 - Supabase's public Auth settings now report **GitHub enabled** and email/anonymous sign-in disabled. The OAuth app credential setup is no longer a blocker; credentials remain in Supabase, not in this repository.
-- All three application migrations are deployed, including custom subscriptions. `ingest-usage` is active with platform JWT verification enabled. Health advisors are clear; the existing [leaked-password-protection warning](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) remains, with password sign-in disabled.
+- All four application migrations are deployed, including custom subscriptions and exact token aggregates/global ranking. `ingest-usage` is active with platform JWT verification enabled. Health advisors are clear; the existing [leaked-password-protection warning](https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection) remains, with password sign-in disabled.
 - The collector session has been renewed through browser PKCE sign-in. `collector status --refresh` succeeds; there is no remaining collector-login blocker. Website and collector sessions remain separate.
 - Live caller-authenticated checks pass for identity, the provisioned GitHub profile, dashboard aggregates, catalogue/custom subscription reads, and group/member/profile joins. Anonymous raw usage, billing and group reads remain denied. These read checks did not change billing, group membership or visibility, and submitted no fake metrics.
 - Live browser smoke checks pass for protected login, the public-statistics notice, direct callback loading, the public GitHub profile, the mobile menu, HTTPS PKCE initiation and a safe invitation return path. Authorization was intercepted before contacting the OAuth endpoint; no browser sign-in or group join was simulated.
 - The public repository's newer mobile-menu changes are retained. Deployment still uses `master` and the GitHub Actions Pages workflow, not a `gh-pages` branch.
+
+## Exact token comparisons and global ranking
+
+- Migration `20261119135309_token_breakdowns_and_global_ranking` is deployed. The monthly security-invoker view retains its original columns and adds exact decimal-string input/output/reasoning/cache-read/cache-write counters. No raw-event, invoice, receipt, membership or Auth settings were exposed or changed.
+- The dashboard removes the **Active Tools** and **Groups** tiles and shows every token count without abbreviating/rounding it. **Token metric** updates the selected total, monthly token chart/table, tool table and public-ranking preview.
+- **In** excludes cache; **Out** includes separately reported reasoning. **In + Out** excludes cache; **Cached + In + Out** counts every disjoint category once. Cached/read/write/reasoning filters and exact counts are available separately too.
+- Group leaderboards and trends compare each category, recorded spending and model estimates for a selected UTC month or all time. Every member participates in the chart; ties share a rank. Recorded invoice totals are summed in cents so equivalent costs do not get different ranks from floating-point rounding.
+- `/ranking` is public without sign-in. The invoker-scoped RPC explicitly excludes private statistics even for their owner/shared-group friends, ranks the complete public population before pagination and returns exact category strings. The build includes `/ranking/index.html` for direct Pages loading.
+- **268 tests pass**, including independent metric sorting, exact counters above `2^53 - 1`, tie/pagination behavior, shared billing, private-user exclusion and dashboard/group/ranking UI controls. Typechecks, lint, production build, frozen Deno check and production dependency audit pass.
+- Native hosted counter reconciliation and **20 anonymous ranking checks** (ten metrics × month/all time) pass, including per-user/month spending deduplication and raw-event/billing/group denials. No synthetic usage or billing was submitted.
+- Desktop/mobile browser checks pass for both labelled demo data and the production build against live Supabase: public ranking, exact authenticated dashboard filters, consenting-group comparisons, no runtime errors and no page overflow. The authenticated check used an existing access token in a closed, isolated read-only context; it did not copy the collector refresh token, complete fresh OAuth or modify billing/visibility/membership.
+- Both protected local Supabase files remain byte-for-byte unchanged and excluded from this update. The schema push used the explicit hosted project and `--skip-vault`; no hosted config push was performed.
 
 ## Collector restart/reboot and session renewal
 
@@ -57,7 +69,7 @@ Open **`/hooks`** in Codex and review/trust the newly installed definitions. Kee
 
 Sign in at [the production website](https://howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz) using GitHub. In **Settings → Subscriptions**, select the plans you actually pay for and enter your monthly invoice amount or your share of a team invoice. Use a custom subscription for an unlisted plan; do not record the same invoice twice.
 
-Confirm your GitHub avatar/name/username, dashboard and group creation or existing group. A shared subscription counts once per UTC month containing relevant recorded usage, so a selected plan without matching usage does not create spending. Share invitations privately; friends must sign in and explicitly click **Join Group**. Opening an invitation or signing in alone does not enroll anyone.
+Confirm your GitHub avatar/name/username, dashboard and group creation or existing group. Try each token filter, compare friends by the same category/UTC month, and check **Global Ranking**. Disabling public statistics removes you from that ranking but retains consenting-group comparisons. A shared subscription counts once per UTC month containing relevant recorded usage, so a selected plan without matching usage does not create spending. Share invitations privately; friends must sign in and explicitly click **Join Group**. Opening an invitation or signing in alone does not enroll anyone.
 
 ### 3. Confirm one new request/import and retry deduplication
 

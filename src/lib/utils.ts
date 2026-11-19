@@ -1,3 +1,5 @@
+import { demoTokenTotals } from './tokens'
+
 export function formatNumber(num: number): string {
   if (num >= 1e12) return (num / 1e12).toFixed(1) + 'T'
   if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B'
@@ -24,11 +26,18 @@ export function formatCurrencyPrecise(amount: number): string {
   }).format(amount)
 }
 
+// Recorded invoices have two decimal places. Sum cents so equivalent billing
+// totals (e.g. $0.10 + $0.20 and $0.30) also share a comparison rank.
+export function addRecordedUsd(a: number, b: number): number {
+  return (Math.round(a * 100) + Math.round(b * 100)) / 100
+}
+
 export function getMockStats() {
   return {
     totalSpent: 247,
     spentChange: { value: 12.5, positive: true },
     totalTokens: 47_800_000,
+    tokenTotals: demoTokenTotals(47_800_000),
     tokensChange: { value: 8.2, positive: true },
     activeTools: 3,
     groupCount: 2,
@@ -37,7 +46,7 @@ export function getMockStats() {
       { name: 'Cursor', tokens: 15_200_000, cost: 67, color: '#c084fc' },
       { name: 'OpenCode', tokens: 8_500_000, cost: 34, color: '#f97316' },
       { name: 'Codex', tokens: 1_700_000, cost: 12, color: '#22c55e' },
-    ],
+    ].map(tool => ({ ...tool, tokenTotals: demoTokenTotals(tool.tokens), unknownCostEvents: 0 })),
     subscriptions: [
       { name: 'Claude Pro', tier: 'Pro', cost: 20, tools: ['Claude Code'], active: true },
       { name: 'Cursor Premium', tier: 'Premium', cost: 30, tools: ['Cursor'], active: true },
@@ -55,7 +64,10 @@ export function getMockMonthlyData() {
     { month: 'Apr', spent: 225, tokens: 41_000_000, estimated: 55 },
     { month: 'May', spent: 235, tokens: 44_300_000, estimated: 50 },
     { month: 'Jun', spent: 247, tokens: 47_800_000, estimated: 47 },
-  ]
+  ].map((month, index) => {
+    const now = new Date()
+    return { ...month, month: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 5 + index, 1)).toISOString().slice(0, 7), tokenTotals: demoTokenTotals(month.tokens), unknownCostEvents: 0 }
+  })
 }
 
 export function getMockGroups() {
@@ -89,7 +101,7 @@ export function getMockGroups() {
         { id: '6', name: 'casey', login: 'caseydev', avatar: '', spent: 138, tokens: 29_200_000, tools: ['Claude Code'] },
       ],
     },
-  ]
+  ].map(group => ({ ...group, members: group.members.map(member => ({ ...member, tokenTotals: demoTokenTotals(member.tokens), estimated: member.spent * 0.6, unknownCostEvents: 0 })) }))
 }
 
 export function getSubscriptionCatalog() {

@@ -4,10 +4,15 @@ import { useSupabase } from '@/contexts/SupabaseContext'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { Plus, TrendingUp, DollarSign, Users, Activity, Target, ArrowUpRight, User } from 'lucide-react'
+import { TokenStats, TokenDefinitions } from '@/components/TokenStats'
+import { TokenFilter } from '@/components/UsageControls'
+import { TokenHistoryChart } from '@/components/TokenHistoryChart'
+import { GlobalRankingPanel } from '@/components/GlobalRankingPanel'
+import { Plus, TrendingUp, DollarSign, Activity, ArrowUpRight, User, Globe } from 'lucide-react'
 import { useCallback, useState } from 'react'
-import { formatNumber, formatCurrencyPrecise as formatCurrency, getMockStats, getMockMonthlyData } from '@/lib/utils'
-import { aggregateUsage, dashboardStats, emptyStats, githubLogin, loadCustomSubscriptions, loadSubscriptions, loadUsage, recentUsageMonths, type DisplaySubscription } from '@/lib/data'
+import { formatCurrencyPrecise as formatCurrency, getMockStats, getMockMonthlyData } from '@/lib/utils'
+import { aggregateUsage, dashboardStats, emptyStats, githubLogin, loadCustomSubscriptions, loadSubscriptions, loadUsage, recentUsageMonths, type DisplaySubscription, type ToolUsage } from '@/lib/data'
+import { emptyTokenTotals, formatTokenCount, TOKEN_METRICS, tokenMetricInfo, tokenRatio, tokenValue, type TokenMetric } from '@/lib/tokens'
 import { useAsyncData } from '@/hooks/useAsyncData'
 
 export function Dashboard() {
@@ -16,16 +21,15 @@ export function Dashboard() {
   const navigate = useNavigate()
   const userId = user?.id
   const [selectedPeriod, setSelectedPeriod] = useState<'month' | 'quarter' | 'year'>('month')
+  const [tokenMetric, setTokenMetric] = useState<TokenMetric>('total')
 
   const load = useCallback(async () => {
     if (!userId) throw new Error('Sign in to load usage.')
-    const [usage, subscriptions, customSubscriptions, membership] = await Promise.all([
+    const [usage, subscriptions, customSubscriptions] = await Promise.all([
       loadUsage(supabase, [userId]), loadSubscriptions(supabase, userId),
       loadCustomSubscriptions(supabase, userId),
-      supabase.from('group_members').select('group_id', { count: 'exact', head: true }).eq('user_id', userId),
     ])
-    if (membership.error) throw new Error(membership.error.message)
-    return { stats: dashboardStats(usage, subscriptions, membership.count ?? 0, new Date(), customSubscriptions), monthlyData: aggregateUsage(usage).monthlyData }
+    return { stats: dashboardStats(usage, subscriptions, new Date(), customSubscriptions), monthlyData: aggregateUsage(usage).monthlyData }
   }, [supabase, userId])
   const { data, loading, error } = useAsyncData(authLoading || isDemoMode || !userId ? null : `dashboard:${userId}`, load)
   const stats = isDemoMode ? { ...getMockStats(), totalEstimated: 202, unknownCostEvents: 0 } : data?.stats ?? emptyStats()
@@ -35,6 +39,12 @@ export function Dashboard() {
   if (error) return <Card><CardTitle>Could not load dashboard</CardTitle><p role="alert">{error}</p><Button onClick={() => window.location.reload()}>Retry</Button></Card>
 
   const periodData = isDemoMode ? monthlyData.slice(- (selectedPeriod === 'month' ? 1 : selectedPeriod === 'quarter' ? 3 : 12)) : recentUsageMonths(monthlyData, selectedPeriod === 'month' ? 1 : selectedPeriod === 'quarter' ? 3 : 12)
+  const tokenInfo = tokenMetricInfo(tokenMetric)
+  const selectedTokens = tokenValue(stats.tokenTotals, tokenMetric)
+  const now = new Date()
+  const previousMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString().slice(0, 7)
+  const previousTokens = tokenValue(monthlyData.find(month => month.month === previousMonth)?.tokenTotals ?? emptyTokenTotals(), tokenMetric)
+  const tokensChange = previousTokens > 0n ? { value: tokenRatio(selectedTokens - previousTokens, previousTokens) * 100, positive: selectedTokens >= previousTokens } : null
 
   return (
     <div>
@@ -65,36 +75,38 @@ export function Dashboard() {
           subtitle="Recorded subscription/invoice prices · UTC month"
         />
         <StatCard
-          title="Total Tokens"
-          value={formatNumber(stats.totalTokens)}
-          change={stats.tokensChange}
+          title="Selected Tokens"
+          value={formatTokenCount(selectedTokens)}
+          change={tokensChange}
           icon={Activity}
           iconColor="#60a5fa"
-          subtitle="All reported token categories"
+          subtitle={`${tokenInfo.label} · UTC month · exact count`}
         />
         <StatCard
-          title="Active Tools"
-          value={String(stats.activeTools)}
+          title="Estimated Model Cost"
+          value={formatCurrency(stats.totalEstimated)}
           change={null}
-          icon={Target}
-          iconColor="#c084fc"
-          subtitle="Of 4 supported"
-        />
-        <StatCard
-          title="Groups"
-          value={String(stats.groupCount)}
-          change={null}
-          icon={Users}
-          iconColor="#22c55e"
-          subtitle={stats.groupCount === 1 ? 'group' : 'groups'}
+          icon={DollarSign}
+          iconColor="#60a5fa"
+          subtitle="Model estimates, not additional invoice charges"
         />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 24 }}>
+      <Card style={{ marginBottom: 24 }}>
+        <CardHeader>
+          <div className="card-heading">
+            <div><CardTitle>Exact Token Statistics</CardTitle><CardDescription>Every reported category for the current UTC month—no abbreviated or rounded token totals</CardDescription></div>
+            <TokenFilter metric={tokenMetric} onChange={setTokenMetric} />
+          </div>
+        </CardHeader>
+        <CardContent><TokenStats tokens={stats.tokenTotals} selectedMetric={tokenMetric} /><TokenDefinitions /></CardContent>
+      </Card>
+
+      <div className="usage-layout">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           <Card>
             <CardHeader>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div className="card-heading">
                 <div>
                   <CardTitle>Monthly Spending</CardTitle>
                   <CardDescription>Real subscription costs and model estimates shown separately</CardDescription>
@@ -104,6 +116,7 @@ export function Dashboard() {
                     <button
                       key={period}
                       onClick={() => setSelectedPeriod(period)}
+                      aria-pressed={selectedPeriod === period}
                       style={{
                         padding: '6px 12px',
                         borderRadius: 'var(--radius-sm)',
@@ -126,18 +139,24 @@ export function Dashboard() {
           </Card>
 
           <Card>
+            <CardHeader><CardTitle>Monthly Tokens</CardTitle><CardDescription>{tokenInfo.description} · Same history window as Monthly Spending</CardDescription></CardHeader>
+            <CardContent><TokenHistoryChart data={periodData} metric={tokenMetric} /></CardContent>
+          </Card>
+
+          <Card>
             <CardHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
                   <CardTitle>Tool Breakdown</CardTitle>
-                  <CardDescription>Tokens and estimated costs per tool</CardDescription>
+                  <CardDescription>Exact token counts and separate model estimates · Selected category: {tokenInfo.label}</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <ToolBreakdown tools={stats.toolBreakdown} />
+              <ToolBreakdown tools={stats.toolBreakdown} metric={tokenMetric} />
             </CardContent>
           </Card>
+          <GlobalRankingPanel metric={tokenMetric} />
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -169,6 +188,7 @@ export function Dashboard() {
               <Button variant="ghost" onClick={() => navigate('/settings?tab=plugins')} style={{ justifyContent: 'flex-start' }}>
                 <Activity size={18} /> Connect a Tool
               </Button>
+              <Button variant="ghost" onClick={() => navigate('/ranking')} style={{ justifyContent: 'flex-start' }}><Globe size={18} /> Global Ranking</Button>
               <Link to={`/@${githubLogin(user) || 'joosibaeri'}`} style={{ textDecoration: 'none' }}>
                 <Button variant="ghost" style={{ justifyContent: 'flex-start' }}>
                   <User size={18} /> View Your Profile
@@ -218,7 +238,7 @@ function StatCard({
           <p style={{ color: 'var(--fg-muted)', fontSize: '0.8125rem', fontWeight: 500, marginBottom: 4 }}>
             {title}
           </p>
-          <p style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--fg)' }}>{value}</p>
+          <p style={{ fontSize: 'clamp(1.25rem, 2vw, 2rem)', fontWeight: 700, color: 'var(--fg)', overflowWrap: 'anywhere', fontVariantNumeric: 'tabular-nums' }}>{value}</p>
           {subtitle && (
             <p style={{ color: 'var(--fg-subtle)', fontSize: '0.8125rem', marginTop: 4 }}>{subtitle}</p>
           )}
@@ -334,63 +354,19 @@ function SpendingChart({ data }: { data: Array<{ month: string; spent: number; t
   )
 }
 
-function ToolBreakdown({ tools }: { tools: Array<{ name: string; tokens: number; cost: number; color: string; unknownCostEvents?: number }> }) {
+function ToolBreakdown({ tools, metric }: { tools: ToolUsage[]; metric: TokenMetric }) {
   if (!tools.length) return <p style={{ color: 'var(--fg-muted)' }}>No tool usage recorded yet.</p>
-  const totalTokens = tools.reduce((sum, t) => sum + t.tokens, 0)
-  const totalCost = tools.reduce((sum, t) => sum + t.cost, 0)
-
+  const columns = [tokenMetricInfo(metric), ...TOKEN_METRICS.filter(option => option.id !== metric)]
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {tools.map((tool) => (
-        <div key={tool.name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 10, height: 10,
-            background: tool.color,
-            borderRadius: '50%',
-            flexShrink: 0,
-          }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-              <span style={{ fontWeight: 500 }}>{tool.name}</span>
-              <span style={{ color: 'var(--fg-muted)' }}>{formatCurrency(tool.cost)}{tool.unknownCostEvents ? ' (partial)' : ''}</span>
-            </div>
-            <div style={{
-              height: 6,
-              background: 'var(--bg)',
-              borderRadius: 3,
-              overflow: 'hidden',
-              marginTop: 4,
-            }}>
-              <div style={{
-                width: `${(tool.tokens / Math.max(totalTokens, 1)) * 100}%`,
-                height: '100%',
-                background: tool.color,
-                borderRadius: 3,
-                transition: 'width 0.5s ease',
-              }} />
-            </div>
-          </div>
-          <div style={{ textAlign: 'right', minWidth: 80 }}>
-            <div style={{ fontSize: '0.8125rem', color: 'var(--fg-subtle)' }}>
-              {formatNumber(tool.tokens)} tokens
-            </div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--fg-subtle)' }}>
-              {((tool.tokens / Math.max(totalTokens, 1)) * 100).toFixed(1)}%
-            </div>
-          </div>
-        </div>
-      ))}
-      <div style={{
-        marginTop: 8,
-        paddingTop: 12,
-        borderTop: '1px solid var(--border)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        fontWeight: 600,
-      }}>
-        <span>Total</span>
-        <span>{formatCurrency(totalCost)} · {formatNumber(totalTokens)} tokens</span>
-      </div>
+    <div className="table-scroll" role="region" aria-label="Exact tool token counts" tabIndex={0}>
+      <table className="stats-table">
+        <thead><tr><th scope="col">Tool</th>{columns.map(column => <th key={column.id} scope="col" className={column.id === metric ? 'selected-metric' : ''}>{column.label} tokens</th>)}<th scope="col">Estimated cost</th></tr></thead>
+        <tbody>{tools.map(tool => <tr key={tool.name}>
+          <th scope="row" style={{ color: tool.color, whiteSpace: 'nowrap' }}>{tool.name}</th>
+          {columns.map(column => <td key={column.id} className={column.id === metric ? 'selected-metric' : ''}>{formatTokenCount(tokenValue(tool.tokenTotals, column.id))}</td>)}
+          <td>{formatCurrency(tool.cost)}{tool.unknownCostEvents ? ' (partial)' : ''}</td>
+        </tr>)}</tbody>
+      </table>
     </div>
   )
 }

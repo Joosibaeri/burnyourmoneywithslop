@@ -82,6 +82,8 @@ Local development can use those public values in untracked `.env.local`. `localh
 - `custom_subscriptions`: owner-only named plans with stable logical IDs and retained price periods. `set_custom_subscription` adds/edits a plan for the current UTC month or stops future tracking. Each custom plan is counted once per used month across its covered tools; its name and raw records remain private.
 - `usage_events`: owner-only metrics with mandatory opaque `event_id`; uniqueness is `(user_id, tool, event_id)`. Only `model_request` events are accepted—no cumulative/session summaries or arbitrary metadata.
 - `monthly_usage_summary`: controlled aggregates, visible for public statistics, the owner, or consenting shared-group members. Raw events/invoices are never exposed through it. Real costs repeat per tool in this view; count once per **user/month**, then sum group members separately.
+- Token category columns (`input_tokens`, `output_tokens`, `reasoning_tokens`, `cache_read_tokens`, `cache_write_tokens`) and `total_tokens_exact` are aggregate **decimal strings**, preserving integers through JSON beyond `2^53 - 1`. The original aggregate columns remain for older clients. Stored output excludes separately reported reasoning; the website's **Out** filter includes both.
+- `get_global_ranking(p_month, p_metric, p_limit, p_offset)`: security-invoker, public-statistics-only ranking of users with recorded usage. A null month selects all time; otherwise months are UTC. All categories/spending/estimates are ranked numerically before paging (1–100 rows), with tied values sharing ranks. Private owner/shared-group aggregates are explicitly excluded even for signed-in callers.
 - `usage-data`: private receipt bucket, with owner-folder insert/select/update/delete policies. Receipt replacement requires all three write/read policies. No receipt contents are published.
 
 RLS and explicit grants are separate requirements. Do not “fix” permissions by granting arbitrary membership inserts, profile identity updates, or broad table access. Privileged helpers are in an unexposed private schema with explicit visibility/ownership checks and restricted execution; the public view is security-invoker.
@@ -89,6 +91,8 @@ RLS and explicit grants are separate requirements. Do not “fix” permissions 
 The follow-up `lock_down_application_grants` migration explicitly revokes permissive inherited table privileges before granting the intended operations/columns. Applying only the initial schema is insufficient on a project with default `ALL` grants. Local tests simulate those hosted defaults and apply every migration in order. Project-wide default privileges and unrelated objects are left unchanged.
 
 The `custom_subscriptions` migration also removes inherited grants on its new table and extends monthly totals without changing existing catalogue prices or authentication settings. Deploy migrations before publishing the UI that uses their RPCs.
+
+Migration `20261119135309_token_breakdowns_and_global_ranking` appends exact counters to the existing security-invoker view and adds the public-only ranking RPC. It preserves raw-event/billing/receipt restrictions and all existing Auth configuration. For this migration, use `supabase db push --remote=skvbxlhnjnksmzdnchlu --skip-vault --yes`; do not push the local user-edited hosted configuration.
 
 Ingestion accepts 1–500 events and at most 1 MiB. Supplied user IDs, prompt/code/snapshot/transcript fields and arbitrary metadata are discarded. Caller identity comes from authentication, never from a payload field.
 
@@ -101,5 +105,6 @@ Ingestion accepts 1–500 events and at most 1 MiB. Supplied user IDs, prompt/co
 5. Select a shared plan covering two tools and verify one monthly charge. Test an invoice override and historical month retention.
 6. Create an invitation, sign in as another user, and explicitly confirm joining. Declining/loading an invite must not enroll anyone.
 7. Disable public statistics and verify anonymous visitors cannot see them, while consenting group members still can. Raw invoices/receipts remain owner-only.
+8. Check **In**, **Out**, **In + Out** and **Cached + In + Out** on the dashboard and in a group; cache/read/write/reasoning totals must reconcile without double counting. Visit `/ranking` anonymously, check month/all-time filters, and confirm private users are excluded even when signed in as a shared-group member.
 
 Authenticated website/collector end-to-end verification requires the manually registered GitHub OAuth app. Passing local schema/collector tests is not a substitute for that final check.

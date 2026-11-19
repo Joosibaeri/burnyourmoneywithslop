@@ -8,8 +8,10 @@ import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
 import { Plus, Lock, ArrowRight, TrendingUp, UserPlus } from 'lucide-react'
 import { useState } from 'react'
-import { formatNumber, formatCurrencyPrecise as formatCurrency } from '@/lib/utils'
-import { getDemoGroups, setDemoGroups, githubLogin, inviteCodeFromInput } from '@/lib/data'
+import { formatCurrencyPrecise as formatCurrency } from '@/lib/utils'
+import { getDemoGroups, setDemoGroups, githubLogin, inviteCodeFromInput, type GroupData } from '@/lib/data'
+import { sumComparisonStats } from '@/lib/comparison'
+import { emptyTokenTotals, formatTokenCount, tokenValue } from '@/lib/tokens'
 
 export function Groups() {
   const navigate = useNavigate()
@@ -37,7 +39,7 @@ export function Groups() {
         setDemoGroups([{
           id: groupId, name: newGroupName.trim(), description: newGroupDesc.trim(), ownerId: user.id,
           inviteCode: `demo-invite-${groupId}`, memberCount: 1, totalSpent: 0, totalTokens: 0, yourRank: 1,
-          members: [{ id: user.id, name: 'You', login: githubLogin(user), avatar: '', spent: 0, tokens: 0, tools: [] }],
+          members: [{ id: user.id, name: 'You', login: githubLogin(user), avatar: '', spent: 0, estimated: 0, tokens: 0, tokenTotals: emptyTokenTotals(), unknownCostEvents: 0, tools: [], monthlyUsage: [] }],
         }, ...getDemoGroups()])
       } else {
         const { data, error: createError } = await supabase.from('groups')
@@ -151,7 +153,7 @@ export function Groups() {
   )
 }
 
-function GroupCard({ group }: { group: { id: string; name: string; description: string; memberCount: number; totalSpent: number; totalTokens: number; yourRank: number; members: Array<{ id: string; name: string; login: string; avatar: string; spent: number; tokens: number; tools: string[] }> } }) {
+function GroupCard({ group }: { group: GroupData }) {
   return (
     <Card>
       <CardHeader>
@@ -169,7 +171,7 @@ function GroupCard({ group }: { group: { id: string; name: string; description: 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
           <StatMini title="Members" value={group.memberCount} />
           <StatMini title="Total Spent" value={formatCurrency(group.totalSpent)} />
-          <StatMini title="Total Tokens" value={formatNumber(group.totalTokens)} />
+          <StatMini title="Total Tokens" value={formatTokenCount(tokenValue(sumComparisonStats(group.members).tokenTotals, 'total'))} />
         </div>
         <div style={{
           padding: '12px',

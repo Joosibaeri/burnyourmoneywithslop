@@ -79,6 +79,14 @@ The Session panel's expiry is the short-lived **Supabase access token**, not the
 
 The catalogue includes Claude Pro/Max, ChatGPT allowance tiers, current and legacy Cursor plans, and OpenCode's free client, Go, Go Plus and Go Teams. A free client does **not** mean its paid API usage is free. Prices were checked on **2026-11-18**; provider limits and prices can change.
 
+## Token filters and rankings
+
+- The dashboard shows exact, unabridged token counts. Its **Token metric** filter updates the selected total, monthly token history, tool breakdown and global-ranking preview.
+- **In** = uncached input. **Out** = output including separately reported reasoning. **In + Out** excludes cache. **Cached + In + Out** includes every category exactly once; **Cached** includes both cache reads and writes. Cache-read, cache-write and reasoning counts are also available separately.
+- Counts reflect recorded provider counters, not reconstructed missing usage. Aggregate counters travel as decimal strings and are summed as integers, so large totals remain exact beyond JavaScript's safe-number limit.
+- Group leaderboards and monthly trends can compare each token category, real spending or model estimates. Choose a UTC month or **All time**; tied values share a rank.
+- [Global Ranking](https://howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz/ranking) is public without sign-in and includes only users with public statistics and recorded usage in the selected period. Private statistics never appear there, including for their owner or shared-group friends. Ranking happens before pagination.
+
 ## Privacy and groups
 
 - Uploaded usage contains only token counters, an estimated/reported model cost and its source, model identifier, timestamp, and opaque hashed event/session IDs. **No prompts, code, file contents, transcripts, repository paths or GitHub provider tokens are uploaded.** Claude reads existing transcripts locally; it does not copy or modify them.
@@ -109,7 +117,7 @@ VITE_SUPABASE_URL=https://skvbxlhnjnksmzdnchlu.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 ```
 
-`VITE_SUPABASE_ANON_KEY` is supported as a legacy fallback. Deployment-managed configuration cannot be overridden by browser storage. The Vite build publishes `collector-config.json` containing public configuration only, plus `/auth/callback/index.html` and a SPA `404.html`.
+`VITE_SUPABASE_ANON_KEY` is supported as a legacy fallback. Deployment-managed configuration cannot be overridden by browser storage. The Vite build publishes `collector-config.json` containing public configuration only, plus `/auth/callback/index.html`, `/ranking/index.html` and a SPA `404.html`.
 
 Database tests execute the actual migration in local Postgres/WASM (PGlite), including RLS, consent, deduplication and monthly billing. Docker-backed Supabase development is optional and requires access to Docker.
 

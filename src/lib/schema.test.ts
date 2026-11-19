@@ -80,6 +80,123 @@ async function asUser<T>(userId: string | null, action: (client: PGlite) => Prom
   }
 }
 
+async function rankingFixture(action: (client: PGlite) => Promise<void>) {
+  await db.exec('begin')
+  try {
+    const fixtures = [
+      ['4', 'rankdan', 40000, 100, 20, 0, 0, 80, 1],
+      ['5', 'rankerin', 1000, 50000, 500, 100, 0, 70, 2],
+      ['6', 'rankfinn', 39000, 25000, 50, 1000, 500, 60, 3],
+      ['7', 'rankgina', 900, 900, 0, 500000, 10000, 50, 999],
+    ] as const
+    for (const [suffix, login, input, output, reasoning, read, write, price, estimate] of fixtures) {
+      const id = `00000000-0000-0000-0000-00000000000${suffix}`
+      await db.query("insert into auth.users (id,raw_user_meta_data) values ($1,jsonb_build_object('user_name',$2::text))", [id, login])
+      await db.query("insert into public.user_subscriptions (user_id,catalog,tier,custom_price_usd,tools,started_at) values ($1,'chatgpt','plus',$2,'{codex}','2026-11-01Z')", [id, price])
+      await db.query("insert into public.usage_events (user_id,tool,event_type,event_id,input_tokens,output_tokens,reasoning_tokens,cache_read_tokens,cache_write_tokens,estimated_cost_usd,cost_source,occurred_at) values ($1,'codex','model_request',repeat('e',64),$2,$3,$4,$5,$6,$7,'reported','2026-11-15T12:00:00Z')", [id, input, output, reasoning, read, write, estimate])
+    }
+    await action(db)
+  } finally { await db.exec('rollback') }
+}
+
+describe('exact token aggregates and public-only global ranking', () => {
+  it('returns exact category strings while retaining every original aggregate column', async () => {
+    const result = await asUser(null, client => client.query("select * from public.monthly_usage_summary where user_id=$1 and tool='codex'", [alice]))
+    expect(result.rows[0]).toMatchObject({
+      total_tokens: '120', total_tokens_exact: '120', input_tokens: '100', output_tokens: '20',
+      reasoning_tokens: '0', cache_read_tokens: '0', cache_write_tokens: '0', real_cost_usd: '25.00',
+    })
+  })
+
+  it('preserves aggregate integers above 2^53 through the view and global RPC', async () => {
+    await asUser(alice, async client => {
+      await client.query("insert into public.usage_events (user_id,tool,event_type,event_id,input_tokens,output_tokens,reasoning_tokens,cache_read_tokens,cache_write_tokens,occurred_at) values ($1,'cursor','model_request',repeat('e',64),4503599627370496,20,5,30,10,'2026-11-15Z'),($1,'cursor','model_request',repeat('f',64),4503599627370497,30,7,40,20,'2026-11-16Z')", [alice])
+      const result = await client.query("select input_tokens,output_tokens,reasoning_tokens,cache_read_tokens,cache_write_tokens,total_tokens_exact from public.monthly_usage_summary where user_id=$1 and tool='cursor'", [alice])
+      expect(result.rows[0]).toEqual({ input_tokens: '9007199254740993', output_tokens: '50', reasoning_tokens: '12', cache_read_tokens: '70', cache_write_tokens: '30', total_tokens_exact: '9007199254741155' })
+      const ranking = await client.query("select input_tokens,real_cost_usd from public.get_global_ranking('2026-11-01','input')")
+      expect(ranking.rows[0]).toEqual({ input_tokens: '9007199254741293', real_cost_usd: '55.00' })
+    })
+  })
+
+  it('never ranks private statistics, even for their owner or a consenting shared-group viewer', async () => {
+    for (const viewer of [null, alice, bob, stranger]) {
+      const result = await asUser(viewer, client => client.query("select user_id,real_cost_usd,total_tokens_exact,rank,total_members from public.get_global_ranking('2026-11-01','total')"))
+      expect(result.rows).toEqual([{ user_id: alice, real_cost_usd: '25.00', total_tokens_exact: '350', rank: 1, total_members: 1 }])
+    }
+    const shared = await asUser(alice, client => client.query('select input_tokens from public.monthly_usage_summary where user_id=$1', [bob]))
+    expect(shared.rows).toEqual([{ input_tokens: '500' }])
+  })
+
+  it('counts public real spending once per user/month for all time and omits inactive periods', async () => {
+    const all = await asUser(null, client => client.query("select real_cost_usd,total_tokens_exact from public.get_global_ranking(null,'spent')"))
+    expect(all.rows).toEqual([{ real_cost_usd: '45.00', total_tokens_exact: '410' }])
+    const empty = await asUser(null, client => client.query("select * from public.get_global_ranking('2026-12-01','total')"))
+    expect(empty.rows).toHaveLength(0)
+  })
+
+  it('removes a user from the public ranking immediately after they disable public statistics', async () => {
+    await asUser(alice, async client => {
+      await client.query('update public.profiles set stats_public=false where id=$1', [alice])
+      expect((await client.query("select * from public.get_global_ranking(null,'total')")).rows).toHaveLength(0)
+      expect((await client.query('select * from public.monthly_usage_summary where user_id=$1', [alice])).rows).toHaveLength(3)
+    })
+  })
+
+  it.each([
+    ['input', 'rankdan'], ['output', 'rankerin'], ['input_output', 'rankfinn'], ['total', 'rankgina'],
+    ['cached', 'rankgina'], ['cache_read', 'rankgina'], ['cache_write', 'rankgina'], ['reasoning', 'rankerin'],
+    ['spent', 'rankdan'], ['estimated', 'rankgina'],
+  ])('ranks %s independently on the server', async (metric, login) => {
+    await rankingFixture(async client => {
+      await client.exec('set local role anon')
+      const result = await client.query<{ github_login: string; rank: number; total_members: number }>("select github_login,rank,total_members from public.get_global_ranking('2026-11-01',$1)", [metric])
+      expect(result.rows[0]).toEqual({ github_login: login, rank: 1, total_members: 5 })
+    })
+  })
+
+  it('ranks the complete public population before pagination, without truncating ranks to each page', async () => {
+    await rankingFixture(async client => {
+      await client.exec('set local role anon')
+      const result = await client.query("select github_login,rank,total_members from public.get_global_ranking('2026-11-01','input',2,2)")
+      expect(result.rows).toEqual([{ github_login: 'rankerin', rank: 3, total_members: 5 }, { github_login: 'rankgina', rank: 4, total_members: 5 }])
+    })
+  })
+
+  it('uses shared ranks for ties and stable public identities to break presentation ties', async () => {
+    await rankingFixture(async client => {
+      await client.query("insert into auth.users (id,raw_user_meta_data) values ('00000000-0000-0000-0000-000000000008','{\"user_name\":\"ranktie\"}')")
+      await client.query("insert into public.usage_events (user_id,tool,event_type,event_id,input_tokens,occurred_at) values ('00000000-0000-0000-0000-000000000008','codex','model_request',repeat('e',64),40000,'2026-11-15Z')")
+      await client.exec('set local role anon')
+      const result = await client.query("select github_login,rank from public.get_global_ranking('2026-11-01','input',3)")
+      expect(result.rows).toEqual([{ github_login: 'rankdan', rank: 1 }, { github_login: 'ranktie', rank: 1 }, { github_login: 'rankfinn', rank: 3 }])
+    })
+  })
+
+  it('buckets token counts by UTC even when the event timestamp has another offset', async () => {
+    await asUser(alice, async client => {
+      await client.query("insert into public.usage_events (user_id,tool,event_type,event_id,input_tokens,occurred_at) values ($1,'codex','model_request',repeat('f',64),7,'2026-11-01T00:30:00+01:00')", [alice])
+      const result = await client.query("select input_tokens from public.monthly_usage_summary where user_id=$1 and tool='codex' and month='2026-10-01Z'", [alice])
+      expect(result.rows).toEqual([{ input_tokens: '7' }])
+    })
+  })
+
+  it('keeps the new public RPC invoker-scoped and excludes raw/invoice/group fields', async () => {
+    const functionInfo = await db.query<{ prosecdef: boolean }>("select prosecdef from pg_proc where oid='public.get_global_ranking(date,text,integer,integer)'::regprocedure")
+    expect(functionInfo.rows[0].prosecdef).toBe(false)
+    const view = await db.query<{ reloptions: string[] }>("select reloptions from pg_class where oid='public.monthly_usage_summary'::regclass")
+    expect(view.rows[0].reloptions).toContain('security_invoker=true')
+    const result = await asUser(null, client => client.query("select * from public.get_global_ranking(null,'total')"))
+    for (const field of ['event_id', 'session_id', 'model', 'invite_code', 'group_id', 'catalog', 'tier', 'subscription_id']) expect(result.rows[0]).not.toHaveProperty(field)
+  })
+
+  it.each([
+    ['unknown', 50, 0], [null, 50, 0], ['total', 0, 0], ['total', 101, 0],
+    ['total', null, 0], ['total', 50, -1], ['total', 50, null], ['total', 50, 1000001],
+  ])('validates ranking metric and bounded page arguments (%s, %s, %s)', async (metric, limit, offset) => {
+    await expect(asUser(null, client => client.query('select * from public.get_global_ranking(null,$1,$2,$3)', [metric, limit, offset]))).rejects.toThrow(/Invalid ranking/)
+  })
+})
+
 describe('production schema and access control', () => {
   it('creates public GitHub profiles on signup', async () => {
     const result = await asUser(null, client => client.query('select github_login, display_name, stats_public from public.profiles order by github_login'))
