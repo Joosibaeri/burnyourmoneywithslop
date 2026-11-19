@@ -19,11 +19,23 @@ cd burnyourmoneywithslop
 npm ci
 npm run collectors:build
 npm run collector -- login
+npm run collector -- install --tool all
 ```
 
 Collector login opens GitHub in your browser and saves a separate refreshable Supabase session privately on your machine. Friends don't need their own Supabase project, privileged key, or OAuth secret.
 
-Generate a tool-specific configuration snippet, then **merge** it into your existing configuration:
+The installer backs up existing global configuration and merges only this collector's settings, preserving comments and other plugins/hooks. Installed collectors reactivate when you start their tools, including after reboot. Review changed Codex hooks in **`/hooks`** once; trust persists afterward.
+
+On Linux with systemd, enable automatic pending-metric uploads after login/reboot:
+
+```sh
+npm run collector -- autostart enable
+npm run collector -- autostart status
+```
+
+This user timer retries queued uploads every minute without starting coding tools or creating AI requests. It starts when you log in after reboot, not before login, and retries after network outages. Empty queues do not renew an idle session. Use `autostart disable` to turn it off. A combined install is also available: `npm run collector -- install --tool all --autostart`.
+
+For manual setup instead, generate a tool-specific snippet and **merge** it into your existing configuration:
 
 ```sh
 npm run --silent collector -- config --tool opencode
@@ -46,11 +58,14 @@ Retries use stable opaque event IDs and never add usage twice. Identical genuine
 
 ```sh
 npm run collector -- status
+npm run collector -- status --refresh
 npm run collector -- flush
 npm run collector -- logout
 ```
 
 Failed uploads stay in a private, account-scoped local queue. Logging into another account does not upload the previous account's queue. Logout revokes the collector session, not the website's session, and leaves pending metrics private on disk.
+
+The Session panel's expiry is the short-lived **Supabase access token**, not the GitHub OAuth app secret. The website persists its session and refreshes it while active/on return; collectors independently refresh their private session before uploading. If a refresh session is revoked, expires under configured inactivity/time limits, or credentials are removed, sign in again. Pending collector metrics are retained. `status --refresh` verifies renewal without displaying tokens.
 
 ## Spending model
 

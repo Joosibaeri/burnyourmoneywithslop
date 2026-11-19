@@ -32,17 +32,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (isDemoMode) return
 
     let active = true
+    let authRevision = 0
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      authRevision++
       if (active) {
         setSession(newSession)
         setUser(newSession?.user ?? null)
       }
     })
 
+    const initialRevision = authRevision
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       if (!active) return
-      setSession(initialSession)
-      setUser(initialSession?.user ?? null)
+      if (authRevision === initialRevision) {
+        setSession(initialSession)
+        setUser(initialSession?.user ?? null)
+      }
       setLoading(false)
     }).catch(() => {
       if (active) setLoading(false)
@@ -88,7 +93,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshSession = useCallback(async () => {
     if (isDemoMode) return
-    await supabase.auth.refreshSession()
+    const { error } = await supabase.auth.refreshSession()
+    if (error) throw error
   }, [supabase, isDemoMode])
 
   return (

@@ -8,6 +8,8 @@ howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz
 
 The public repository and website remain public. GitHub Pages publishes a **GitHub Actions artifact**, not a `gh-pages` branch.
 
+**Verified on 2026-11-19:** the domain has an approved certificate, normal TLS-verified requests to the website and `/auth/callback` return **200**, **Enforce HTTPS** is enabled, and HTTP redirects to HTTPS with **301**. No DNS reset or certificate workaround is needed. The instructions below are a reference, not remaining setup.
+
 ## DNS and Pages settings
 
 The required subdomain record is:

@@ -35,7 +35,7 @@ function getSupabaseClient(): SupabaseClient {
     } else {
       if (!isPublishableKey(SUPABASE_ANON_KEY)) throw new Error('Use a Supabase publishable key or legacy anon key, never a secret/service-role key.')
       supabaseInstance = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: { flowType: 'pkce', detectSessionInUrl: false },
+        auth: { flowType: 'pkce', detectSessionInUrl: false, persistSession: true, autoRefreshToken: true },
       })
     }
   }

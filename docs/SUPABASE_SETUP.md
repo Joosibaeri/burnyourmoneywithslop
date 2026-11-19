@@ -2,7 +2,9 @@
 
 The existing production project is **`skvbxlhnjnksmzdnchlu`**, at https://skvbxlhnjnksmzdnchlu.supabase.co. Friends only use GitHub sign-in and collector login; they do not create Supabase projects.
 
-## Required manual step: register GitHub OAuth
+## GitHub OAuth registration
+
+**Already configured and verified on 2026-11-19:** GitHub authentication is enabled in the production project. Do not register another app or replace its secret just to start using the website. The following values are the reference setup for an administrator rebuilding the integration.
 
 Open https://github.com/settings/applications/new and enter:
 

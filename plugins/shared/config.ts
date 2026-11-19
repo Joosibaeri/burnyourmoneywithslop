@@ -4,6 +4,11 @@ import { isAbsolute, join } from 'node:path'
 export const SITE_URL = 'https://howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz'
 export const LOGIN_PORT = 48173
 
+export function userConfigHome(): string {
+  const xdg = process.env.XDG_CONFIG_HOME
+  return xdg && isAbsolute(xdg) ? xdg : join(homedir(), '.config')
+}
+
 export interface CollectorConfig {
   supabaseUrl: string
   publishableKey: string
@@ -12,8 +17,7 @@ export interface CollectorConfig {
 export function configDirectory(): string {
   const override = process.env.BYM_CONFIG_DIR
   if (override && !isAbsolute(override)) throw new Error('BYM_CONFIG_DIR must be an absolute path')
-  const xdg = process.env.XDG_CONFIG_HOME
-  return override || join(xdg && isAbsolute(xdg) ? xdg : join(homedir(), '.config'), 'burnyourmoneywithslop')
+  return override || join(userConfigHome(), 'burnyourmoneywithslop')
 }
 
 export function validateConfig(config: CollectorConfig): CollectorConfig {

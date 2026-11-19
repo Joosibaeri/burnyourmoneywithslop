@@ -12,6 +12,7 @@ cd burnyourmoneywithslop
 npm ci
 npm run collectors:build
 npm run collector -- login
+npm run collector -- install --tool all
 ```
 
 Complete GitHub authorization in the browser. This uses PKCE, an in-memory verifier, and a random-state callback on **127.0.0.1:48173**. The only persisted session credentials are Supabase access/refresh tokens, expiry, user ID and public project configuration. GitHub provider tokens are discarded.
@@ -30,7 +31,15 @@ Get the public key from [Supabase API Keys](https://supabase.com/dashboard/proje
 
 ## 2. Configure your tools
 
+The `install` command backs up and updates persistent **global** tool configuration. It preserves JSON/JSONC comments, unrelated plugins/hooks and symlinks, and is safe to repeat. Install all supported live collectors with `--tool all`, or select one of `opencode`, `claude-code`, `codex`. It does not create undocumented Cursor hooks.
+
+Once installed, hooks/plugins are automatically loaded whenever you start their tools, including after reboot. OpenCode watches changes automatically; Claude may require a fresh session. Codex requires one-time review/trust after installation changes its definitions. No coding tool is launched at computer startup.
+
+For manual installation instead, the following generated snippets remain available:
+
 Generated snippets print JSON with your clone's absolute paths. **Merge the relevant entries into your existing configuration**, preserving other plugins/hooks. Do not redirect these commands onto an existing settings file and overwrite it. These packages are not published on npm.
+
+All snippets carry the selected private credential directory, including OpenCode's plugin options. Use `--config-dir /absolute/private/path` when generating a snippet for a non-default directory.
 
 ### OpenCode V2
 
@@ -79,10 +88,10 @@ Use a Codex release that supplies `PreModelRequest`, `PostModelRequest`, `turn_i
 npm run --silent collector -- config --tool codex
 ```
 
-Merge **all three** entries into `$CODEX_HOME/hooks.json` (normally `~/.codex/hooks.json`), or a trusted project's `.codex/hooks.json`. Open **`/hooks`** in Codex and review/trust the exact new definitions. An untrusted hook does not run. Don't use a trust-bypass flag.
+Merge all entries into `$CODEX_HOME/hooks.json` (normally `~/.codex/hooks.json`), or a trusted project's `.codex/hooks.json`. Open **`/hooks`** in Codex and review/trust the exact new definitions. An untrusted hook does not run. Don't use a trust-bypass flag.
 
 - **PreModelRequest and PostModelRequest must stay synchronous** (`async: false`). They only write local state/metrics, never wait on HTTP.
-- A separate **background Stop** hook uploads queued metrics after turns.
+- Separate **background SessionStart and Stop** hooks upload queued metrics on startup and after turns.
 - Codex commands are quoted shell command strings, **not** Claude's exec-form `args` objects.
 - The bundled alternative under `plugins/codex/.codex-plugin` uses `PLUGIN_ROOT`, not an assumed installation path.
 
@@ -113,10 +122,31 @@ The importer independently filters to your user principal and excludes other use
 
 Costs are decimal **USD**, not cents. Included/credit items may conceal costs as zero without a visibility marker; these are marked unavailable, not free. Reported costs remain model estimates, not reconciled invoices or prepaid top-up spending.
 
-## 3. Verify and retry
+## 3. Automatic uploads after login/reboot (Linux)
+
+After collector login and persistent tool installation:
+
+```sh
+npm run collector -- autostart enable
+npm run collector -- autostart status
+npm run collector -- status --refresh
+```
+
+`install --tool all --autostart` combines installation and scheduler enablement. `login --autostart` can enable it after a new browser sign-in. This requires Linux's systemd **user** manager; no root privileges, machine-wide service, lingering, coding-tool launch or extra model request is created.
+
+The matching `burnyourmoneywithslop-flush.service`/`.timer` files live under `~/.config/systemd/user` (or `$XDG_CONFIG_HOME/systemd/user`). The enabled timer starts when your user logs in after reboot. It retries pending uploads every minute after the previous attempt finishes; it also recovers after network outages/suspend. Each run is limited to five batches and uses the same private account-scoped queue and locked token refresh as tool hooks.
+
+The credential directory is supplied explicitly in installed hooks and startup units, so it does not depend on your login shell exporting `BYM_CONFIG_DIR`. Keep the clone and Node binary at stable paths; re-run installation after moving/upgrading them. Existing same-named unmanaged units are not overwritten.
+
+Only queued metrics trigger token renewal; an empty timer does not keep an unused session alive indefinitely. An expired access token is refreshed on the next upload. If the refresh token/session is revoked or expires under project policies, metrics remain queued until you run `collector login` again. Website and collector sessions are separate; the website uses persisted automatic refresh while visible/on return.
+
+To turn off the scheduler, run `npm run collector -- autostart disable`. This does not remove your tool hooks, credentials or queued metrics. On macOS/Windows the saved tool hooks still reactivate after tool restart, but this Linux scheduler is not installed; use tool-start/turn uploads or manual `flush` there. Cursor still requires explicit supported billing exports.
+
+## 4. Verify and retry
 
 ```sh
 npm run collector -- status
+npm run collector -- status --refresh
 # Use your configured tool for a new request/turn, or import your Cursor export.
 npm run collector -- flush
 ```

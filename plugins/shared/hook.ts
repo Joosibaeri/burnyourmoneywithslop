@@ -1,10 +1,15 @@
 import { stdin, stdout, stderr } from 'node:process'
+import { parseArgs } from 'node:util'
+import { configDirectory } from './config'
 import type { UsageEvent } from './events'
 import { enqueueEvents, flushEvents } from './transport'
 
 // Hook stdin is one JSON object, not necessarily a single line. Never log that object.
 export async function runHook(collect: (input: Record<string, unknown>) => Promise<UsageEvent[]>, options: { queueOnly?: boolean } = {}): Promise<void> {
   try {
+    const { values } = parseArgs({ options: { 'config-dir': { type: 'string' } } })
+    if (values['config-dir']) process.env.BYM_CONFIG_DIR = values['config-dir']
+    configDirectory() // Validate overrides before collecting anything.
     let text = ''
     for await (const chunk of stdin) {
       text += chunk.toString()

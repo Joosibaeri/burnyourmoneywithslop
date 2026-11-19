@@ -16,7 +16,12 @@ export async function accessCredentials(directory: string, forceRefresh = false)
       headers: { apikey: credentials.publishableKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: credentials.refreshToken }),
     })
-    if (!response.ok) throw new Error(`Collector session could not refresh (HTTP ${response.status}). Sign in again.`)
+    if (!response.ok) {
+      const body = await response.json().catch(() => null) as { error_code?: string } | null
+      const known = ['refresh_token_not_found', 'refresh_token_already_used', 'session_not_found', 'session_expired'].includes(body?.error_code ?? '') ? `, ${body!.error_code}` : ''
+      // Emit only known error codes, never provider error text or credential data.
+      throw new Error(`Collector session could not refresh (HTTP ${response.status}${known}). Sign in again: npm run collector -- login`)
+    }
     const session = await response.json() as { access_token: string; refresh_token: string; expires_in: number; expires_at?: number; user: { id: string } }
     if (!session.access_token || !session.refresh_token || session.user?.id !== credentials.userId || !Number.isFinite(session.expires_in)) throw new Error('Invalid refreshed session; sign in again')
     credentials = { ...credentials, accessToken: session.access_token, refreshToken: session.refresh_token, expiresAt: session.expires_at ?? Math.floor(Date.now() / 1000) + session.expires_in }
@@ -66,12 +71,15 @@ export async function enqueueForAccount(events: UsageEvent[], directory: string,
 }
 
 export async function flushEvents(directory = configDirectory(), maxBatches = 100): Promise<{ inserted: number; uploaded: number }> {
-  let credentials = await accessCredentials(directory)
+  let credentials = await withLock(directory, () => readCredentials(directory))
   const pending = queueDirectory(directory, credentials)
   const names = (await readdir(pending).catch((error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT') return []
     throw error
   })).filter(name => /^[a-f0-9]{64}\.json$/.test(name)).sort()
+  // Startup retries must not keep an otherwise idle account alive forever.
+  // Refresh only when there are actual queued metrics to upload.
+  if (!names.length) return { inserted: 0, uploaded: 0 }
   let inserted = 0
   let uploaded = 0
   for (let offset = 0; offset < names.length && offset / BATCH_SIZE < maxBatches; offset += BATCH_SIZE) {

@@ -1,4 +1,5 @@
 import { Plugin } from '@opencode/plugin'
+import { isAbsolute } from 'node:path'
 import { configDirectory } from '../../shared/config'
 import { enqueueEvents, flushEvents } from '../../shared/transport'
 import { OpenCodeSteps } from './steps'
@@ -6,7 +7,9 @@ import { OpenCodeSteps } from './steps'
 export default Plugin.define({
   id: 'burnyourmoneywithslop',
   setup(ctx) {
-    const directory = configDirectory()
+    const configured = ctx.options.configDirectory
+    if (configured !== undefined && (typeof configured !== 'string' || !isAbsolute(configured))) throw new Error('Collector configDirectory must be an absolute path')
+    const directory = typeof configured === 'string' ? configured : configDirectory()
     const steps = new OpenCodeSteps()
     const controller = new AbortController()
     let flushing = false
