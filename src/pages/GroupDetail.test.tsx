@@ -46,6 +46,7 @@ describe('independent group comparisons', () => {
     renderGroup()
     const table = screen.getByRole('region', { name: 'Group leaderboard exact statistics' })
     for (const label of ['In tokens', 'Out tokens', 'In + Out tokens', 'Cached + In + Out tokens', 'Cached tokens', 'Cache read tokens', 'Cache write tokens', 'Reasoning tokens', 'Estimated model cost']) expect(within(table).getByRole('button', { name: `Rank by ${label}` })).toBeInTheDocument()
+    expect(within(table).queryByRole('button', { name: 'Rank by Uncached input tokens' })).not.toBeInTheDocument()
     expect(within(leaderboardRows()[1]).getByText('50,500')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Group Real spending by UTC month' }).querySelectorAll('polyline')).toHaveLength(7)
     expect(screen.getByLabelText('Exact token statistics')).toBeInTheDocument()

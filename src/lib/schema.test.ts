@@ -3,6 +3,9 @@ import { readFile, readdir } from 'node:fs/promises'
 import { PGlite } from '@electric-sql/pglite'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { SUBSCRIPTION_CATALOG } from './utils'
+import { aggregateUsage, type UsageSummary } from './data'
+import { rankMembers } from './comparison'
+import { tokenTotalsFromRecord, tokenValue } from './tokens'
 
 const alice = '00000000-0000-0000-0000-000000000001'
 const bob = '00000000-0000-0000-0000-000000000002'
@@ -120,8 +123,10 @@ describe('exact token aggregates and public-only global ranking', () => {
 
   it('never ranks private statistics, even for their owner or a consenting shared-group viewer', async () => {
     for (const viewer of [null, alice, bob, stranger]) {
-      const result = await asUser(viewer, client => client.query("select user_id,real_cost_usd,total_tokens_exact,rank,total_members from public.get_global_ranking('2026-11-01','total')"))
-      expect(result.rows).toEqual([{ user_id: alice, real_cost_usd: '25.00', total_tokens_exact: '350', rank: 1, total_members: 1 }])
+      for (const metric of ['input', 'input_output', 'total', 'cached']) {
+        const result = await asUser(viewer, client => client.query("select user_id,real_cost_usd,total_tokens_exact,rank,total_members from public.get_global_ranking('2026-11-01',$1)", [metric]))
+        expect(result.rows).toEqual([{ user_id: alice, real_cost_usd: '25.00', total_tokens_exact: '350', rank: 1, total_members: 1 }])
+      }
     }
     const shared = await asUser(alice, client => client.query('select input_tokens from public.monthly_usage_summary where user_id=$1', [bob]))
     expect(shared.rows).toEqual([{ input_tokens: '500' }])
@@ -151,6 +156,51 @@ describe('exact token aggregates and public-only global ranking', () => {
       await client.exec('set local role anon')
       const result = await client.query<{ github_login: string; rank: number; total_members: number }>("select github_login,rank,total_members from public.get_global_ranking('2026-11-01',$1)", [metric])
       expect(result.rows[0]).toEqual({ github_login: login, rank: 1, total_members: 5 })
+    })
+  })
+
+  it('keeps clean In and both cache categories separate without changing the stored or returned counters', async () => {
+    await rankingFixture(async client => {
+      await client.exec('set local role anon')
+      const result = await client.query<UsageSummary>("select * from public.get_global_ranking('2026-11-01','input') where github_login='rankgina'")
+      expect(result.rows[0]).toMatchObject({ input_tokens: '900', cache_read_tokens: '500000', cache_write_tokens: '10000', total_tokens_exact: '511800' })
+      const tokens = tokenTotalsFromRecord(result.rows[0])
+      expect(tokenValue(tokens, 'input')).toBe(900n)
+      expect(tokenValue(tokens, 'cached')).toBe(510000n)
+      expect(tokenValue(tokens, 'total')).toBe(tokenValue(tokens, 'cached') + tokenValue(tokens, 'input') + tokenValue(tokens, 'output'))
+    })
+  })
+
+  it.each(['input', 'input_output', 'total', 'cached'] as const)('keeps server and frontend %s rankings identical for monthly and all-time comparisons', async metric => {
+    await rankingFixture(async client => {
+      await client.exec('set local role anon')
+      for (const month of ['2026-11-01', null]) {
+        const usage = await client.query<Omit<UsageSummary, 'month'> & { month: Date; github_login: string }>("select s.*,p.github_login from public.monthly_usage_summary s join public.profiles p on p.id=s.user_id and p.stats_public where $1::date is null or s.month=date_trunc('month',$1::timestamp) at time zone 'UTC'", [month])
+        const members = [...new Set(usage.rows.map(row => row.user_id))].map(id => {
+          // PGlite decodes timestamps as Dates; PostgREST sends ISO strings.
+          const rows = usage.rows.filter(row => row.user_id === id).map(row => ({ ...row, month: row.month.toISOString() }))
+          const stats = aggregateUsage(rows)
+          return { id, name: rows[0].github_login, login: rows[0].github_login, avatar: '', tools: [], spent: stats.totalSpent, estimated: stats.totalEstimated, unknownCostEvents: stats.unknownCostEvents, tokenTotals: stats.tokenTotals }
+        })
+        const expected = rankMembers(members, metric).map(member => ({ user_id: member.id, rank: member.rank }))
+        const actual = await client.query('select user_id,rank from public.get_global_ranking($1,$2)', [month, metric])
+        expect(actual.rows).toEqual(expected)
+      }
+    })
+  })
+
+  it('ranks Cached independently and exactly when totals differ above Number.MAX_SAFE_INTEGER', async () => {
+    await rankingFixture(async client => {
+      for (const [suffix, login, cached] of [['8', 'rankexacta', '9007199254740992'], ['9', 'rankexactb', '9007199254740993']]) {
+        const id = `00000000-0000-0000-0000-00000000000${suffix}`
+        await client.query("insert into auth.users (id,raw_user_meta_data) values ($1,jsonb_build_object('user_name',$2::text))", [id, login])
+        await client.query("insert into public.usage_events (user_id,tool,event_type,event_id,cache_read_tokens,occurred_at) values ($1,'codex','model_request',repeat('e',64),$2,'2026-11-15Z')", [id, cached])
+      }
+      await client.exec('set local role anon')
+      const result = await client.query("select github_login,cache_read_tokens,rank from public.get_global_ranking('2026-11-01','cached',2)")
+      expect(result.rows).toEqual([{ github_login: 'rankexactb', cache_read_tokens: '9007199254740993', rank: 1 }, { github_login: 'rankexacta', cache_read_tokens: '9007199254740992', rank: 2 }])
+      const clean = await client.query("select github_login,rank from public.get_global_ranking('2026-11-01','input',1)")
+      expect(clean.rows).toEqual([{ github_login: 'rankdan', rank: 1 }])
     })
   })
 
@@ -190,7 +240,7 @@ describe('exact token aggregates and public-only global ranking', () => {
   })
 
   it.each([
-    ['unknown', 50, 0], [null, 50, 0], ['total', 0, 0], ['total', 101, 0],
+    ['unknown', 50, 0], ['uncached_input', 50, 0], [null, 50, 0], ['total', 0, 0], ['total', 101, 0],
     ['total', null, 0], ['total', 50, -1], ['total', 50, null], ['total', 50, 1000001],
   ])('validates ranking metric and bounded page arguments (%s, %s, %s)', async (metric, limit, offset) => {
     await expect(asUser(null, client => client.query('select * from public.get_global_ranking(null,$1,$2,$3)', [metric, limit, offset]))).rejects.toThrow(/Invalid ranking/)

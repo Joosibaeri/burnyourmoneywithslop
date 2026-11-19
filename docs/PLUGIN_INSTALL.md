@@ -55,6 +55,8 @@ Configuration reloads automatically; `/reload` forces a reload. Do not restart t
 
 The plugin consumes one ordered live stream of started/ended/failed steps, correlating `assistantMessageID` with the exact dispatched model. It uploads reported per-step counters/cost, never cumulative `session.usage.updated` totals. Enabling it does not import historical sessions. If a start wasn't observed, the model remains unknown rather than being guessed from a later session selection. Usage-bearing failed steps are included.
 
+Input comes from the full model request's reported usage, including tool-driven continuations—not the length of the user's prompt. **In** includes all input classified as uncached, including system instructions and tool answers. Context classified as a cache read or write stays in **Cached**, regardless of its source. The collector never reads prompt/system/tool contents to estimate or relabel counts. A tool answer contributes when it is sent in a model request, not merely because a tool ran.
+
 ### Claude Code
 
 ```sh

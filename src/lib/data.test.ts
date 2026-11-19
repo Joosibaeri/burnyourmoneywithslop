@@ -40,6 +40,8 @@ describe('UTC usage and shared billing aggregation', () => {
     expect(summary.monthlyData[1].tokenTotals.input).toBe(180n)
     expect(summary.toolBreakdown.find(tool => tool.name === 'Codex')?.tokenTotals.reasoning).toBe(10n)
     expect(summary.totalSpent).toBe(65)
+    expect(tokenValue(summary.tokenTotals, 'input')).toBe(240n)
+    expect(tokenValue(summary.tokenTotals, 'cached')).toBe(60n)
     expect(tokenValue(summary.tokenTotals, 'input_output')).toBe(340n)
     expect(tokenValue(summary.tokenTotals, 'total')).toBe(400n)
   })
@@ -69,6 +71,7 @@ describe('global ranking transport', () => {
     const result = await loadGlobalRanking({ rpc } as unknown as SupabaseClient, '2026-11', 'input', 50, 50)
     expect(rpc).toHaveBeenCalledWith('get_global_ranking', { p_month: '2026-11-01', p_metric: 'input', p_limit: 50, p_offset: 50 })
     expect(result.members[0]).toMatchObject({ id: 'alice', name: 'Alice', login: 'alice', rank: 51, tokenTotals: { input: 9007199254740993n } })
+    expect(tokenValue(result.members[0].tokenTotals, 'input')).toBe(9007199254740993n)
     expect(result.totalMembers).toBe(80)
   })
   it('requests all time explicitly without sending a caller/group visibility override', async () => {

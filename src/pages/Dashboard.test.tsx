@@ -39,6 +39,10 @@ describe('exact dashboard statistics and filters', () => {
       ['Cached tokens', '10,520'], ['Cache read tokens', '10,020'], ['Cache write tokens', '500'], ['Reasoning tokens', '20'],
     ]) expect(within(within(definitions).getByText(label).parentElement!).getByText(count)).toBeInTheDocument()
     expect(within(definitions).getByText('556 output + 20 reasoning')).toBeInTheDocument()
+    expect(screen.getByText(/In counts uncached input sent to the model/)).toHaveTextContent('tool answers')
+    expect(screen.getByText(/Total = Cached \+ In \+ Out/)).toHaveTextContent('each category is counted once')
+    expect(screen.queryByText('Uncached input tokens')).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'Uncached input' })).not.toBeInTheDocument()
     expect(screen.queryByText('Active Tools')).not.toBeInTheDocument()
     expect(screen.queryByText('Groups', { exact: true })).not.toBeInTheDocument()
     expect(client.from).not.toHaveBeenCalled()
@@ -65,6 +69,20 @@ describe('exact dashboard statistics and filters', () => {
     await renderDashboard()
     expect(within(screen.getByText('Selected Tokens').parentElement!).getByText('9,007,199,254,740,993')).toBeInTheDocument()
     expect(within(screen.getByLabelText('Exact token statistics')).getAllByText('9,007,199,254,740,993')).toHaveLength(3)
+  })
+
+  it('keeps cached-only context out of In in statistics, history and tools without claiming no usage', async () => {
+    vi.mocked(loadUsage).mockResolvedValue([{ ...usage[0], input_tokens: '0', output_tokens: '0', reasoning_tokens: '0' }])
+    await renderDashboard()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Token metric' }), { target: { value: 'input' } })
+    expect(within(screen.getByText('Selected Tokens').parentElement!).getByText('0')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: 'Exact monthly token counts' })).getByText('0')).toBeInTheDocument()
+    const toolRow = within(screen.getByRole('region', { name: 'Exact tool token counts' })).getByRole('rowheader', { name: 'Codex' }).parentElement!
+    expect(toolRow.querySelector('td.selected-metric')).toHaveTextContent('0')
+    expect(screen.queryByText(/No usage recorded this month/)).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Token metric' }), { target: { value: 'cached' } })
+    expect(within(screen.getByText('Selected Tokens').parentElement!).getByText('10,500')).toBeInTheDocument()
+    expect(screen.queryByText(/No usage recorded this month/)).not.toBeInTheDocument()
   })
 
   it('does not describe a missing output category as an empty usage account', async () => {

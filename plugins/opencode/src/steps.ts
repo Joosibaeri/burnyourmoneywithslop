@@ -28,6 +28,9 @@ export class OpenCodeSteps {
     this.models.delete(key)
     const tokens = event.data.tokens
     if (!tokens && !event.data.cost) return null
+    // These are model-request counters for the assembled context, including
+    // system instructions and tool-feedback continuations—not prompt-text sizes.
+    // Respect OpenCode's uncached/cache classification without reading content.
     // OpenCode already reports disjoint request counters. Never also collect
     // session.usage.updated (cumulative), or guess the model from session.model.
     return usageEvent('opencode', event.id, event.data.sessionID, model, {

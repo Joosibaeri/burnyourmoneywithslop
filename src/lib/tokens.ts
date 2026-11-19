@@ -1,6 +1,8 @@
-// Collector counters are disjoint: input excludes cache, output excludes
-// separately reported reasoning. Keep integers exact; only charts use ratios.
+// Collector counters are disjoint: In is all provider-reported uncached model
+// input, not just user prompts. Cache reads/writes remain entirely in Cached;
+// output excludes separately reported reasoning. Only chart ratios are approximate.
 export interface TokenTotals {
+  // The provider's uncached counter, not a count of user-authored prompts.
   input: bigint
   output: bigint
   reasoning: bigint
@@ -17,13 +19,13 @@ export interface TokenCounterRecord {
 }
 
 export const TOKEN_METRICS = [
-  { id: 'input', label: 'In', description: 'Uncached input tokens' },
+  { id: 'input', label: 'In', description: 'Uncached model input: prompts, system instructions, conversation context, and tool results' },
   { id: 'output', label: 'Out', description: 'Output, including separately reported reasoning' },
-  { id: 'input_output', label: 'In + Out', description: 'Uncached input + output (including reasoning)' },
-  { id: 'total', label: 'Cached + In + Out', description: 'Cache reads + cache writes + input + output (including reasoning)' },
-  { id: 'cached', label: 'Cached', description: 'Cache reads + cache writes' },
+  { id: 'input_output', label: 'In + Out', description: 'Uncached model input + output (including reasoning); cache stays separate' },
+  { id: 'total', label: 'Cached + In + Out', description: 'Cache reads + cache writes + uncached model input + output (including reasoning)' },
+  { id: 'cached', label: 'Cached', description: 'Cache reads + cache writes; never included in In' },
   { id: 'cache_read', label: 'Cache read', description: 'Reported cache-read input tokens' },
-  { id: 'cache_write', label: 'Cache write', description: 'Reported cache-write input tokens' },
+  { id: 'cache_write', label: 'Cache write', description: 'Reported cache-write input tokens; counted in Cached, not In' },
   { id: 'reasoning', label: 'Reasoning', description: 'Separately reported reasoning; already included in Out' },
 ] as const
 

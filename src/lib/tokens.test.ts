@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addTokenTotals, demoTokenTotals, emptyTokenTotals, formatTokenCount, parseTokenCount, tokenRatio, tokenTotalsFromRecord, tokenValue } from './tokens'
+import { addTokenTotals, demoTokenTotals, emptyTokenTotals, formatTokenCount, parseTokenCount, TOKEN_METRICS, tokenRatio, tokenTotalsFromRecord, tokenValue } from './tokens'
 
 const tokens = { input: 1000n, output: 200n, reasoning: 50n, cacheRead: 300n, cacheWrite: 100n }
 
@@ -20,6 +20,31 @@ describe('exact token metrics', () => {
   })
   it('reads disjoint recorded counters without reconstructing unavailable categories', () => {
     expect(tokenTotalsFromRecord({ input_tokens: '1000', output_tokens: 200, reasoning_tokens: '50', cache_read_tokens: 300, cache_write_tokens: '100' })).toEqual(tokens)
+  })
+  it('keeps cache-heavy context entirely in Cached without adding it to clean In', () => {
+    const recorded = tokenTotalsFromRecord({ input_tokens: '327', output_tokens: '20', reasoning_tokens: '10', cache_read_tokens: '100000', cache_write_tokens: '1000' })
+    expect(tokenValue(recorded, 'input')).toBe(327n)
+    expect(tokenValue(recorded, 'cached')).toBe(101000n)
+    expect(tokenValue(recorded, 'input_output')).toBe(357n)
+    expect(tokenValue(recorded, 'total')).toBe(101357n)
+    expect(tokenValue(recorded, 'total')).toBe(tokenValue(recorded, 'cached') + tokenValue(recorded, 'input') + tokenValue(recorded, 'output'))
+  })
+  it('reports zero clean input for cached-only usage without dropping its total', () => {
+    const recorded = { ...emptyTokenTotals(), cacheRead: 1000n, cacheWrite: 100n }
+    expect(tokenValue(recorded, 'input')).toBe(0n)
+    expect(tokenValue(recorded, 'cached')).toBe(1100n)
+    expect(tokenValue(recorded, 'total')).toBe(1100n)
+  })
+  it('adds cached input exactly above Number.MAX_SAFE_INTEGER', () => {
+    const recorded = { ...tokens, input: 9007199254740993n, cacheRead: 9007199254740995n }
+    expect(tokenValue(recorded, 'input')).toBe(9007199254740993n)
+    expect(tokenValue(recorded, 'cached')).toBe(9007199254741095n)
+    expect(tokenValue(recorded, 'total')).toBe(18014398509482338n)
+  })
+  it('uses In as the only clean-input metric without an extra Uncached input field', () => {
+    expect(TOKEN_METRICS.some(metric => String(metric.id) === 'uncached_input')).toBe(false)
+    expect(TOKEN_METRICS.some(metric => String(metric.label) === 'Uncached input')).toBe(false)
+    expect(TOKEN_METRICS.find(metric => metric.id === 'input')?.description).toContain('tool results')
   })
   it('only approximates chart ratios, not displayed counts', () => {
     expect(tokenRatio(10n ** 100n, 2n * 10n ** 100n)).toBe(0.5)

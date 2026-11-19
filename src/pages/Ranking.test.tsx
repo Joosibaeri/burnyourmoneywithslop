@@ -35,6 +35,8 @@ describe('public global ranking', () => {
     expect(screen.getByRole('link', { name: 'Public Friend' })).toHaveAttribute('href', '/@publicfriend')
     expect(screen.getByText('@publicfriend')).toBeInTheDocument()
     expect(screen.getByText('9,007,199,254,740,993')).toBeInTheDocument()
+    expect(screen.getByText(/In counts uncached input sent to the model/)).toHaveTextContent('tool answers')
+    expect(screen.queryByRole('button', { name: 'Rank by Uncached input tokens' })).not.toBeInTheDocument()
     expect(screen.getByText(/partial/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()

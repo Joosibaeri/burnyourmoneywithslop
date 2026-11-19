@@ -16,7 +16,7 @@ export function ComparisonTable({ members, metric, currentUserId, onMetricChange
     <>
     <div className="table-scroll" role="region" aria-label={label} tabIndex={0}>
       <table className="stats-table comparison-table">
-        <caption className="visually-hidden">Exact statistics, ranked by {comparisonLabel(metric)}. Ties share a rank. Out includes reasoning; cached tokens include reads and writes.</caption>
+        <caption className="visually-hidden">Exact statistics, ranked by {comparisonLabel(metric)}. Ties share a rank. In includes uncached prompts, system instructions, context and tool answers. Cached stays separate and includes reads and writes. Out includes reasoning.</caption>
         <thead><tr>
           <th scope="col">Rank</th><th scope="col" className="identity-cell">Member</th>
           {columns.map(column => <th key={column} scope="col" aria-sort={column === metric ? 'descending' : undefined} className={column === metric ? 'selected-metric' : ''}>

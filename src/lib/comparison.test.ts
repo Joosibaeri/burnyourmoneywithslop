@@ -17,6 +17,14 @@ describe('group metric rankings', () => {
     expect(rankMembers(exact, 'input').map(member => member.id)).toEqual(['b', 'a'])
     expect(formatComparisonValue(exact[1], 'input')).toBe('9,007,199,254,740,993')
   })
+  it('keeps both cache types out of clean-input ranking without changing stored counters', () => {
+    const cached = { ...member('cached', 1n, 0n, 100n), tokenTotals: { ...emptyTokenTotals(), input: 1n, cacheRead: 100n, cacheWrite: 100n } }
+    const uncached = member('uncached', 200n, 0n, 0n)
+    expect(rankMembers([uncached, cached], 'input')[0].id).toBe('uncached')
+    expect(rankMembers([uncached, cached], 'cached')[0].id).toBe('cached')
+    expect(formatComparisonValue(cached, 'input')).toBe('1')
+    expect(cached.tokenTotals.input).toBe(1n)
+  })
   it('gives ties the same rank and stabilizes them by GitHub login without mutating input', () => {
     const tied = [member('b', 10n, 0n, 0n), member('a', 10n, 0n, 0n), member('c', 5n, 0n, 0n)]
     expect(rankMembers(tied, 'total').map(member => [member.id, member.rank])).toEqual([['a', 1], ['b', 1], ['c', 3]])

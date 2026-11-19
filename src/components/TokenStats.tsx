@@ -15,5 +15,5 @@ export function TokenStats({ tokens, selectedMetric }: { tokens: TokenTotals; se
 }
 
 export function TokenDefinitions() {
-  return <p className="metric-help" style={{ marginTop: 12 }}>In excludes cache. Out includes reported reasoning. Cached includes cache reads and writes. Each category is counted once; missing provider counters are not reconstructed.</p>
+  return <p className="metric-help" style={{ marginTop: 12 }}>In counts uncached input sent to the model—not just what you type: prompts, system instructions, conversation context, and tool answers. Cached stays separate and includes cache reads and writes. Out includes reported reasoning. Total = Cached + In + Out; each category is counted once. Counts come from request usage, not from measuring prompt text; missing provider counters are not reconstructed.</p>
 }
