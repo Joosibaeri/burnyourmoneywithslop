@@ -90,6 +90,14 @@ export function Dashboard() {
           iconColor="#60a5fa"
           subtitle="Model estimates, not additional invoice charges"
         />
+        <StatCard
+          title="Combined Cost"
+          value={formatCurrency(stats.totalSpent + stats.totalEstimated)}
+          change={null}
+          icon={DollarSign}
+          iconColor="var(--success)"
+          subtitle="Real spending + estimated model cost · UTC month"
+        />
       </div>
 
       <Card style={{ marginBottom: 24 }}>

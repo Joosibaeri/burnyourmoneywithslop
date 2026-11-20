@@ -55,6 +55,7 @@ describe('exact dashboard statistics and filters', () => {
     expect(client.from).not.toHaveBeenCalled()
     expect(loadUsage).toHaveBeenCalledWith(client, ['friend'])
     expect(screen.getByText('$20.00')).toBeInTheDocument()
+    expect(within(screen.getByText('Combined Cost').parentElement!).getByText('$23.00')).toBeInTheDocument()
     expect(screen.getByText(/Model estimates are incomplete/)).toBeInTheDocument()
   })
 
