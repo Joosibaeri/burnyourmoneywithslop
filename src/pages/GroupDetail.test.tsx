@@ -40,7 +40,7 @@ describe('independent group comparisons', () => {
     expect(within(leaderboardRows()[0]).getByRole('link', { name: 'finn' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Group In + Out tokens by UTC month' })).toBeInTheDocument()
   })
-  it.each([['spent', 'dan', 'Real spending'], ['input', 'dan', 'In tokens'], ['output', 'erin', 'Out tokens'], ['input_output', 'finn', 'In + Out tokens'], ['total', 'gina', 'Cached + In + Out tokens'], ['cached', 'gina', 'Cached tokens'], ['reasoning', 'erin', 'Reasoning tokens']] as const)('re-ranks every member and the trend chart by %s', (metric, top, label) => {
+  it.each([['cost', 'dan', 'Cost'], ['input', 'dan', 'In tokens'], ['output', 'erin', 'Out tokens'], ['input_output', 'finn', 'In + Out tokens'], ['total', 'gina', 'Cached + In + Out tokens'], ['cached', 'gina', 'Cached tokens'], ['reasoning', 'erin', 'Reasoning tokens']] as const)('re-ranks every member and the trend chart by %s', (metric, top, label) => {
     renderGroup()
     fireEvent.change(screen.getByRole('combobox', { name: 'Compare by' }), { target: { value: metric } })
     expect(within(leaderboardRows()[0]).getByRole('link', { name: top })).toBeInTheDocument()
@@ -51,7 +51,7 @@ describe('independent group comparisons', () => {
   it('shows exact comparisons for all fields and does not truncate chart participation to five members', () => {
     renderGroup()
     const table = screen.getByRole('region', { name: 'Group leaderboard exact statistics' })
-    for (const label of ['In tokens', 'Out tokens', 'In + Out tokens', 'Cached + In + Out tokens', 'Cached tokens', 'Cache read tokens', 'Cache write tokens', 'Reasoning tokens', 'Estimated model cost']) expect(within(table).getByRole('button', { name: `Rank by ${label}` })).toBeInTheDocument()
+    for (const label of ['In tokens', 'Out tokens', 'In + Out tokens', 'Cached + In + Out tokens', 'Cached tokens', 'Cache read tokens', 'Cache write tokens', 'Reasoning tokens', 'Cost']) expect(within(table).getByRole('button', { name: `Rank by ${label}` })).toBeInTheDocument()
     expect(within(table).queryByRole('button', { name: 'Rank by Uncached input tokens' })).not.toBeInTheDocument()
     expect(within(leaderboardRows()[1]).getByText('50,500')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Group In + Out tokens by UTC month' }).querySelectorAll('polyline')).toHaveLength(7)
@@ -60,14 +60,15 @@ describe('independent group comparisons', () => {
 
   it('can compare historical UTC months and all time without reusing current-month totals', () => {
     renderGroup()
-    fireEvent.change(screen.getByRole('combobox', { name: 'Compare by' }), { target: { value: 'spent' } })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Compare by' }), { target: { value: 'cost' } })
     fireEvent.change(screen.getByLabelText('UTC month'), { target: { value: '2025-01' } })
     expect(within(leaderboardRows()[0]).getByRole('link', { name: 'gina' })).toBeInTheDocument()
     expect(within(leaderboardRows()[0]).getByText('$1,000.00')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('checkbox', { name: 'All time' }))
     expect(screen.getByLabelText('UTC month')).toBeDisabled()
-    expect(within(leaderboardRows()[0]).getByText('$1,050.00')).toBeInTheDocument()
+    expect(within(leaderboardRows()[0]).getByText('$1,051.00')).toBeInTheDocument()
     expect(screen.getByText(/Your rank:/)).toHaveTextContent('#2')
+    expect(screen.getByText('Total Cost')).toBeInTheDocument()
   })
 
   it('lets a column heading switch the ranking metric too', () => {

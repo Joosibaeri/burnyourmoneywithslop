@@ -1,7 +1,7 @@
 import { addRecordedUsd, formatCurrencyPrecise } from './utils'
 import { addTokenTotals, emptyTokenTotals, formatTokenCount, TOKEN_METRICS, tokenMetricInfo, tokenRatio, tokenValue, type TokenMetric, type TokenTotals } from './tokens'
 
-export type ComparisonMetric = 'spent' | 'estimated' | TokenMetric
+export type ComparisonMetric = 'cost' | TokenMetric
 
 export interface ComparisonStats {
   spent: number
@@ -23,17 +23,16 @@ export interface RankedMember extends ComparisonMember {
 }
 
 export const COMPARISON_OPTIONS = [
-  { value: 'spent', label: 'Real spending' },
+  { value: 'cost', label: 'Cost' },
   ...TOKEN_METRICS.map(metric => ({ value: metric.id, label: `${metric.label} tokens` })),
-  { value: 'estimated', label: 'Estimated model cost' },
 ]
 
 export function comparisonLabel(metric: ComparisonMetric): string {
-  return metric === 'spent' ? 'Real spending' : metric === 'estimated' ? 'Estimated model cost' : `${tokenMetricInfo(metric).label} tokens`
+  return metric === 'cost' ? 'Cost' : `${tokenMetricInfo(metric).label} tokens`
 }
 
 export function comparisonValue(stats: ComparisonStats, metric: ComparisonMetric): number | bigint {
-  return metric === 'spent' ? stats.spent : metric === 'estimated' ? stats.estimated : tokenValue(stats.tokenTotals, metric)
+  return metric === 'cost' ? stats.spent + stats.estimated : tokenValue(stats.tokenTotals, metric)
 }
 
 export function formatComparisonValue(stats: ComparisonStats, metric: ComparisonMetric): string {

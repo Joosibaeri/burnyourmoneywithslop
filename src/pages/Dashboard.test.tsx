@@ -34,7 +34,7 @@ describe('exact dashboard statistics and filters', () => {
   it('defaults personal counts, history and the comparison preview to In + Out', async () => {
     await renderDashboard()
     expect(screen.getByRole('combobox', { name: 'Token metric' })).toHaveValue('input_output')
-    expect(within(screen.getByText('Selected Tokens').parentElement!).getByText('1,237,143')).toBeInTheDocument()
+    expect(within(screen.getByText('Tokens').parentElement!).getByText('1,237,143')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'In + Out tokens by UTC month' })).toBeInTheDocument()
     await waitFor(() => expect(loadGlobalRanking).toHaveBeenLastCalledWith(client, month, 'input_output', 5))
   })
@@ -54,15 +54,14 @@ describe('exact dashboard statistics and filters', () => {
     expect(screen.queryByText('Groups', { exact: true })).not.toBeInTheDocument()
     expect(client.from).not.toHaveBeenCalled()
     expect(loadUsage).toHaveBeenCalledWith(client, ['friend'])
-    expect(screen.getByText('$20.00')).toBeInTheDocument()
-    expect(within(screen.getByText('Combined Cost').parentElement!).getByText('$23.00')).toBeInTheDocument()
-    expect(screen.getByText(/Model estimates are incomplete/)).toBeInTheDocument()
+    expect(within(screen.getByText('Cost', { selector: 'p' }).parentElement!).getByText('$23.00')).toBeInTheDocument()
+    expect(screen.getByText(/Cost data is incomplete/)).toBeInTheDocument()
   })
 
   it.each([['input', '1,236,567', 'In'], ['output', '576', 'Out'], ['input_output', '1,237,143', 'In + Out'], ['total', '1,247,663', 'Cached + In + Out']] as const)('applies the %s filter to the selected total, monthly counts, tool table and global preview', async (metric, count, label) => {
     await renderDashboard()
     fireEvent.change(screen.getByRole('combobox', { name: 'Token metric' }), { target: { value: metric } })
-    const selected = screen.getByText('Selected Tokens').parentElement!
+    const selected = screen.getByText('Tokens').parentElement!
     expect(within(selected).getByText(count)).toBeInTheDocument()
     expect(screen.getByRole('img', { name: `${label} tokens by UTC month` })).toBeInTheDocument()
     const monthly = screen.getByRole('region', { name: 'Exact monthly token counts' })
@@ -75,7 +74,7 @@ describe('exact dashboard statistics and filters', () => {
   it('never abbreviates or rounds counters above Number.MAX_SAFE_INTEGER', async () => {
     vi.mocked(loadUsage).mockResolvedValue([{ ...usage[0], input_tokens: '9007199254740993', output_tokens: '0', reasoning_tokens: '0', cache_read_tokens: '0', cache_write_tokens: '0' }])
     await renderDashboard()
-    expect(within(screen.getByText('Selected Tokens').parentElement!).getByText('9,007,199,254,740,993')).toBeInTheDocument()
+    expect(within(screen.getByText('Tokens').parentElement!).getByText('9,007,199,254,740,993')).toBeInTheDocument()
     expect(within(screen.getByLabelText('Exact token statistics')).getAllByText('9,007,199,254,740,993')).toHaveLength(3)
   })
 
@@ -83,13 +82,13 @@ describe('exact dashboard statistics and filters', () => {
     vi.mocked(loadUsage).mockResolvedValue([{ ...usage[0], input_tokens: '0', output_tokens: '0', reasoning_tokens: '0' }])
     await renderDashboard()
     fireEvent.change(screen.getByRole('combobox', { name: 'Token metric' }), { target: { value: 'input' } })
-    expect(within(screen.getByText('Selected Tokens').parentElement!).getByText('0')).toBeInTheDocument()
+    expect(within(screen.getByText('Tokens').parentElement!).getByText('0')).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'Exact monthly token counts' })).getByText('0')).toBeInTheDocument()
     const toolRow = within(screen.getByRole('region', { name: 'Exact tool token counts' })).getByRole('rowheader', { name: 'Codex' }).parentElement!
     expect(toolRow.querySelector('td.selected-metric')).toHaveTextContent('0')
     expect(screen.queryByText(/No usage recorded this month/)).not.toBeInTheDocument()
     fireEvent.change(screen.getByRole('combobox', { name: 'Token metric' }), { target: { value: 'cached' } })
-    expect(within(screen.getByText('Selected Tokens').parentElement!).getByText('10,500')).toBeInTheDocument()
+    expect(within(screen.getByText('Tokens').parentElement!).getByText('10,500')).toBeInTheDocument()
     expect(screen.queryByText(/No usage recorded this month/)).not.toBeInTheDocument()
   })
 
@@ -97,7 +96,7 @@ describe('exact dashboard statistics and filters', () => {
     vi.mocked(loadUsage).mockResolvedValue([{ ...usage[0], output_tokens: '0', reasoning_tokens: '0' }])
     await renderDashboard()
     fireEvent.change(screen.getByRole('combobox', { name: 'Token metric' }), { target: { value: 'output' } })
-    expect(within(screen.getByText('Selected Tokens').parentElement!).getByText('0')).toBeInTheDocument()
+    expect(within(screen.getByText('Tokens').parentElement!).getByText('0')).toBeInTheDocument()
     expect(screen.queryByText(/No usage recorded this month/)).not.toBeInTheDocument()
   })
 

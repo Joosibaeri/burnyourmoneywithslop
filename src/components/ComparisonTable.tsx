@@ -37,7 +37,7 @@ export function ComparisonTable({ members, metric, currentUserId, onMetricChange
           </th>
           {columns.map(column => <td key={column} className={column === metric ? 'selected-metric' : ''}>
             {formatComparisonValue(member, column)}
-            {column === 'estimated' && member.unknownCostEvents > 0 && <span className="partial-estimate" title={`${member.unknownCostEvents} requests have unavailable pricing`}> partial</span>}
+            {column === 'cost' && member.unknownCostEvents > 0 && <span className="partial-estimate" title={`${member.unknownCostEvents} requests have unavailable pricing`}> partial</span>}
           </td>)}
         </tr>)}</tbody>
       </table>

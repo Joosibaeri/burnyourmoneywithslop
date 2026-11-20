@@ -132,8 +132,8 @@ describe('exact token aggregates and public-only global ranking', () => {
     expect(shared.rows).toEqual([{ input_tokens: '500' }])
   })
 
-  it('counts public real spending once per user/month for all time and omits inactive periods', async () => {
-    const all = await asUser(null, client => client.query("select real_cost_usd,total_tokens_exact from public.get_global_ranking(null,'spent')"))
+  it('ranks combined cost once per user/month for all time and omits inactive periods', async () => {
+    const all = await asUser(null, client => client.query("select real_cost_usd,total_tokens_exact from public.get_global_ranking(null,'cost')"))
     expect(all.rows).toEqual([{ real_cost_usd: '45.00', total_tokens_exact: '410' }])
     const empty = await asUser(null, client => client.query("select * from public.get_global_ranking('2026-12-01','total')"))
     expect(empty.rows).toHaveLength(0)
@@ -150,7 +150,7 @@ describe('exact token aggregates and public-only global ranking', () => {
   it.each([
     ['input', 'rankdan'], ['output', 'rankerin'], ['input_output', 'rankfinn'], ['total', 'rankgina'],
     ['cached', 'rankgina'], ['cache_read', 'rankgina'], ['cache_write', 'rankgina'], ['reasoning', 'rankerin'],
-    ['spent', 'rankdan'], ['estimated', 'rankgina'],
+    ['cost', 'rankgina']
   ])('ranks %s independently on the server', async (metric, login) => {
     await rankingFixture(async client => {
       await client.exec('set local role anon')
@@ -171,7 +171,7 @@ describe('exact token aggregates and public-only global ranking', () => {
     })
   })
 
-  it.each(['input', 'input_output', 'total', 'cached'] as const)('keeps server and frontend %s rankings identical for monthly and all-time comparisons', async metric => {
+  it.each(['input', 'input_output', 'total', 'cached', 'cost'] as const)('keeps server and frontend %s rankings identical for monthly and all-time comparisons', async metric => {
     await rankingFixture(async client => {
       await client.exec('set local role anon')
       for (const month of ['2026-11-01', null]) {

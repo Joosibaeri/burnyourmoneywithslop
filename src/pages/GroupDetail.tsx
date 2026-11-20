@@ -180,12 +180,11 @@ export function GroupDetail() {
             </CardHeader>
             <CardContent>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <StatRow label="Total Group Spending" value={formatCurrency(groupStats.spent)} icon={DollarSign} color="var(--accent)" />
+                <StatRow label="Total Cost" value={`${formatCurrency(groupStats.spent + groupStats.estimated)}${groupStats.unknownCostEvents ? ' (partial)' : ''}`} icon={DollarSign} color="var(--accent)" />
                 <StatRow label="Total Tokens Used" value={formatTokenCount(tokenValue(groupStats.tokenTotals, 'total'))} icon={Activity} color="#60a5fa" />
-                <StatRow label="Average per Member" value={formatCurrency(groupStats.spent / Math.max(group.memberCount, 1))} icon={TrendingUp} color="#22c55e" />
-                <StatRow label="Estimated Model Cost" value={`${formatCurrency(groupStats.estimated)}${groupStats.unknownCostEvents ? ' (partial)' : ''}`} icon={DollarSign} color="#60a5fa" />
+                <StatRow label="Average Cost" value={formatCurrency((groupStats.spent + groupStats.estimated) / Math.max(group.memberCount, 1))} icon={TrendingUp} color="#22c55e" />
                 <StatRow label="Active Tools" value={`${new Set(group.members.flatMap(m => m.tools)).size} of 4`} icon={Users} color="#c084fc" />
-                <TokenStats tokens={groupStats.tokenTotals} selectedMetric={metric === 'spent' || metric === 'estimated' ? undefined : metric} />
+                <TokenStats tokens={groupStats.tokenTotals} selectedMetric={metric === 'cost' ? undefined : metric} />
               </div>
             </CardContent>
           </Card>

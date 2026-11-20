@@ -93,7 +93,7 @@ export function Groups() {
           }}>👥</div>
           <CardTitle>No groups yet</CardTitle>
           <CardDescription>
-            Create a private group to compare AI usage and spending with friends.
+            Create a private group to compare AI usage and cost with friends.
             Group membership is private. Members can compare usage summaries even when public statistics are disabled.
           </CardDescription>
           <div style={{ maxWidth: 400, margin: '0 auto 24px' }}>
@@ -170,7 +170,7 @@ function GroupCard({ group }: { group: GroupData }) {
       <CardContent>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 16 }}>
           <StatMini title="Members" value={group.memberCount} />
-          <StatMini title="Total Spent" value={formatCurrency(group.totalSpent)} />
+          <StatMini title="Cost" value={formatCurrency(group.totalSpent)} />
           <StatMini title="In + Out Tokens" value={formatTokenCount(tokenValue(sumComparisonStats(group.members).tokenTotals, 'input_output'))} />
         </div>
         <div style={{

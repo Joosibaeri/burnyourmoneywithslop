@@ -36,7 +36,7 @@ export function Ranking() {
   return <div>
     <div style={{ marginBottom: 28 }}>
       <h1 style={{ fontSize: '2rem', marginBottom: 8 }}><Globe size={28} style={{ verticalAlign: 'middle', marginRight: 10 }} />Global Ranking</h1>
-      <p className="metric-help">Compare AI token usage and spending across all users with public statistics. No group membership or sign-in required.</p>
+      <p className="metric-help">Compare AI token usage and cost across all users with public statistics. No group membership or sign-in required.</p>
     </div>
     {isDemoMode && <p className="metric-help" style={{ marginBottom: 16 }}>Demo ranking—sample data only.</p>}
     <Card>
@@ -62,6 +62,6 @@ export function Ranking() {
         </div>
       </CardContent>
     </Card>
-    <p className="metric-help" style={{ marginTop: 20 }}>Only public aggregate statistics are ranked. Private statistics remain available only to their owner and consenting group members. Real spending uses recorded subscription/invoice prices; model estimates are not additional charges.</p>
+    <p className="metric-help" style={{ marginTop: 20 }}>Only public aggregate statistics are ranked. Private statistics remain available only to their owner and consenting group members. Cost combines recorded subscription/invoice prices and available per-request costs; missing costs are excluded.</p>
   </div>
 }

@@ -29,7 +29,7 @@ async function renderRanking(path = '/ranking') {
 }
 
 describe('public global ranking', () => {
-  it('works without sign-in and displays exact counts, GitHub identity and partial model estimates', async () => {
+  it('works without sign-in and displays exact counts, GitHub identity and partial costs', async () => {
     await renderRanking()
     expect(loadGlobalRanking).toHaveBeenCalledWith(client, month, 'input_output', 50, 0)
     expect(screen.getByRole('combobox', { name: 'Compare by' })).toHaveValue('input_output')
@@ -39,12 +39,13 @@ describe('public global ranking', () => {
     expect(screen.getByText(/In counts uncached input sent to the model/)).toHaveTextContent('tool answers')
     expect(screen.queryByRole('button', { name: 'Rank by Uncached input tokens' })).not.toBeInTheDocument()
     expect(screen.getByText(/partial/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Rank by Cost' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled()
     expect(screen.getByText('1 public user with recorded usage in this period')).toBeInTheDocument()
   })
 
-  it.each(['input', 'output', 'input_output', 'total', 'cached', 'cache_read', 'cache_write', 'reasoning', 'spent', 'estimated'])('fetches an independently ranked %s leaderboard', async metric => {
+  it.each(['input', 'output', 'input_output', 'total', 'cached', 'cache_read', 'cache_write', 'reasoning', 'cost'])('fetches an independently ranked %s leaderboard', async metric => {
     await renderRanking()
     fireEvent.change(screen.getByRole('combobox', { name: 'Compare by' }), { target: { value: metric } })
     await waitFor(() => expect(loadGlobalRanking).toHaveBeenLastCalledWith(client, month, metric, 50, 0))

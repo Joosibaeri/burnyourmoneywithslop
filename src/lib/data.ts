@@ -140,12 +140,13 @@ export function aggregateUsage(rows: UsageSummary[]): UsageAggregate {
   const months = new Map<string, MonthlyUsage>()
   const userMonthlyCosts = new Map<string, number>()
   const breakdown = new Map<string, ToolUsage>()
+  const userMonthTools = new Map<string, Map<string, number>>()
   for (const row of rows) {
     const key = row.month.slice(0, 7)
     const month = months.get(key) ?? emptyMonthlyUsage(key)
     const tokenTotals = tokenTotalsFromRecord(row)
-    // The view repeats costs per tool. Count once per user/month, not once per
-    // tool or once for an entire group of different users.
+    // The view repeats recorded subscription costs per tool. Count once per
+    // user/month and later allocate that amount across the user's active tools.
     const userMonth = `${row.user_id}:${key}`
     const previousCost = userMonthlyCosts.get(userMonth) ?? 0
     const cost = Math.max(previousCost, Number(row.real_cost_usd))
@@ -153,15 +154,27 @@ export function aggregateUsage(rows: UsageSummary[]): UsageAggregate {
     userMonthlyCosts.set(userMonth, cost)
     month.tokenTotals = addTokenTotals(month.tokenTotals, tokenTotals)
     month.tokens = Number(tokenValue(month.tokenTotals, 'total'))
-    month.estimated += Number(row.total_estimated_cost)
+    const estimate = Number(row.total_estimated_cost)
+    month.estimated += estimate
     month.unknownCostEvents += Number(row.unknown_cost_events ?? 0)
     months.set(key, month)
     const tool = breakdown.get(row.tool) ?? { ...(TOOLS[row.tool] ?? { name: row.tool, color: '#60a5fa' }), tokens: 0, cost: 0, tokenTotals: emptyTokenTotals(), unknownCostEvents: 0 }
     tool.tokenTotals = addTokenTotals(tool.tokenTotals, tokenTotals)
     tool.tokens = Number(tokenValue(tool.tokenTotals, 'total'))
-    tool.cost += Number(row.total_estimated_cost)
+    tool.cost += estimate
     tool.unknownCostEvents += Number(row.unknown_cost_events ?? 0)
     breakdown.set(row.tool, tool)
+    const tools = userMonthTools.get(userMonth) ?? new Map<string, number>()
+    tools.set(row.tool, (tools.get(row.tool) ?? 0) + estimate)
+    userMonthTools.set(userMonth, tools)
+  }
+  for (const [userMonth, tools] of userMonthTools) {
+    const subscriptionCost = userMonthlyCosts.get(userMonth) ?? 0
+    const sharePerTool = subscriptionCost / tools.size
+    for (const toolName of tools.keys()) {
+      const tool = breakdown.get(toolName)!
+      tool.cost += sharePerTool
+    }
   }
   const monthlyData = [...months.values()].sort((a, b) => a.month.localeCompare(b.month))
   const tokenTotals = monthlyData.reduce((sum, month) => addTokenTotals(sum, month.tokenTotals), emptyTokenTotals())
@@ -214,7 +227,7 @@ export async function loadGroups(supabase: SupabaseClient, userId: string, group
     const sorted = rankMembers(members, DEFAULT_TOKEN_METRIC)
     return {
       id: String(group.id), name: String(group.name), description: group.description || '', ownerId: String(group.owner_id), inviteCode: String(group.invite_code),
-      members, memberCount: members.length, totalSpent: members.reduce((sum, member) => addRecordedUsd(sum, member.spent), 0), totalTokens: members.reduce((sum, member) => sum + member.tokens, 0),
+      members, memberCount: members.length, totalSpent: members.reduce((sum, member) => sum + member.spent + member.estimated, 0), totalTokens: members.reduce((sum, member) => sum + member.tokens, 0),
       yourRank: sorted.find(member => member.id === userId)?.rank ?? 0,
     }
   })
@@ -320,7 +333,7 @@ export function dashboardStats(rows: UsageSummary[], subscriptions: Subscription
   const change = (current: number, old: number) => old > 0 ? { value: (current - old) / old * 100, positive: current >= old } : null
   return {
     ...emptyStats(), ...summary,
-    spentChange: change(summary.totalSpent, previous.totalSpent), tokensChange: change(summary.totalTokens, previous.totalTokens),
+    spentChange: change(summary.totalSpent + summary.totalEstimated, previous.totalSpent + previous.totalEstimated), tokensChange: change(summary.totalTokens, previous.totalTokens),
     subscriptions: [...subscriptions.filter(sub => sub.active).map(sub => ({
       id: `catalog:${sub.catalog}`,
       name: SUBSCRIPTION_CATALOG.find(catalog => catalog.id === sub.catalog)?.name ?? sub.catalog,

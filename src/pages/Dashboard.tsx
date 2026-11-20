@@ -32,7 +32,7 @@ export function Dashboard() {
     return { stats: dashboardStats(usage, subscriptions, new Date(), customSubscriptions), monthlyData: aggregateUsage(usage).monthlyData }
   }, [supabase, userId])
   const { data, loading, error } = useAsyncData(authLoading || isDemoMode || !userId ? null : `dashboard:${userId}`, load)
-  const stats = isDemoMode ? { ...getMockStats(), totalEstimated: 202, unknownCostEvents: 0 } : data?.stats ?? emptyStats()
+  const stats = isDemoMode ? { ...getMockStats(), totalEstimated: 202, totalSpent: 247, unknownCostEvents: 0 } : data?.stats ?? emptyStats()
   const monthlyData = isDemoMode ? getMockMonthlyData() : data?.monthlyData ?? []
 
   if (loading || authLoading) return <p role="status">Loading your usage…</p>
@@ -53,12 +53,12 @@ export function Dashboard() {
           Welcome back, {githubLogin(user) || 'friend'} 👋
         </h1>
         <p style={{ color: 'var(--fg-muted)' }}>
-          Here's your AI coding spending overview
+          Here's your AI coding cost overview
         </p>
       </div>
 
       {!isDemoMode && stats.totalTokens === 0 && <p style={{ marginBottom: 24, color: 'var(--fg-muted)' }}>No usage recorded this month. <Link to="/settings?tab=subscriptions">Choose your subscriptions</Link> and <Link to="/settings?tab=plugins">install a tool collector</Link> to get started.</p>}
-      {!!stats.unknownCostEvents && <p style={{ marginBottom: 24, color: 'var(--fg-muted)' }}>Model estimates are incomplete: {stats.unknownCostEvents} requests have missing or hidden cost. Unavailable pricing is not free usage.</p>}
+      {!!stats.unknownCostEvents && <p style={{ marginBottom: 24, color: 'var(--fg-muted)' }}>Cost data is incomplete: {stats.unknownCostEvents} requests have missing or hidden pricing. Unavailable pricing is not free usage.</p>}
 
       <div style={{
         display: 'grid',
@@ -67,37 +67,22 @@ export function Dashboard() {
         marginBottom: 32,
       }}>
         <StatCard
-          title="Real Spending"
-          value={formatCurrency(stats.totalSpent)}
+          title="Cost"
+          value={formatCurrency(stats.totalSpent + stats.totalEstimated)}
           change={stats.spentChange}
           icon={DollarSign}
           iconColor="var(--accent)"
-          subtitle="Recorded subscription/invoice prices · UTC month"
+          subtitle="Usage and subscription costs · UTC month"
         />
         <StatCard
-          title="Selected Tokens"
+          title="Tokens"
           value={formatTokenCount(selectedTokens)}
           change={tokensChange}
           icon={Activity}
           iconColor="#60a5fa"
           subtitle={`${tokenInfo.label} · UTC month · exact count`}
         />
-        <StatCard
-          title="Estimated Model Cost"
-          value={formatCurrency(stats.totalEstimated)}
-          change={null}
-          icon={DollarSign}
-          iconColor="#60a5fa"
-          subtitle="Model estimates, not additional invoice charges"
-        />
-        <StatCard
-          title="Combined Cost"
-          value={formatCurrency(stats.totalSpent + stats.totalEstimated)}
-          change={null}
-          icon={DollarSign}
-          iconColor="var(--success)"
-          subtitle="Real spending + estimated model cost · UTC month"
-        />
+
       </div>
 
       <Card style={{ marginBottom: 24 }}>
@@ -116,8 +101,8 @@ export function Dashboard() {
             <CardHeader>
               <div className="card-heading">
                 <div>
-                  <CardTitle>Monthly Spending</CardTitle>
-                  <CardDescription>Real subscription costs and model estimates shown separately</CardDescription>
+                  <CardTitle>Monthly Cost</CardTitle>
+                  <CardDescription>Combined usage and subscription cost by month</CardDescription>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {(['month', 'quarter', 'year'] as const).map((period) => (
@@ -142,12 +127,12 @@ export function Dashboard() {
               </div>
             </CardHeader>
             <CardContent>
-              <SpendingChart data={periodData} />
+              <CostChart data={periodData} />
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>Monthly Tokens</CardTitle><CardDescription>{tokenInfo.description} · Same history window as Monthly Spending</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Monthly Tokens</CardTitle><CardDescription>{tokenInfo.description} · Same history window as Monthly Cost</CardDescription></CardHeader>
             <CardContent><TokenHistoryChart data={periodData} metric={tokenMetric} /></CardContent>
           </Card>
 
@@ -155,8 +140,8 @@ export function Dashboard() {
             <CardHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <CardTitle>Tool Breakdown</CardTitle>
-                  <CardDescription>Exact token counts and separate model estimates · Selected category: {tokenInfo.label}</CardDescription>
+                  <CardTitle>Tools</CardTitle>
+                  <CardDescription>Exact token counts and cost by tool; subscription cost is split evenly across tools · Selected category: {tokenInfo.label}</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -172,8 +157,8 @@ export function Dashboard() {
             <CardHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <CardTitle>Active Subscriptions</CardTitle>
-                  <CardDescription>Selected prices; counted only in months with relevant usage</CardDescription>
+                  <CardTitle>Subscriptions</CardTitle>
+                  <CardDescription>Selected prices included in cost for months with relevant usage</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -280,9 +265,9 @@ function StatCard({
   )
 }
 
-function SpendingChart({ data }: { data: Array<{ month: string; spent: number; tokens: number; estimated: number }> }) {
+function CostChart({ data }: { data: Array<{ month: string; spent: number; tokens: number; estimated: number }> }) {
   if (!data.length) return <p style={{ color: 'var(--fg-muted)' }}>No usage recorded yet.</p>
-  const maxSpent = Math.max(...data.flatMap(d => [d.spent, d.estimated]), 1)
+  const maxSpent = Math.max(...data.map(d => d.spent + d.estimated), 1)
   const height = 200
   const paddingTop = 20
   const paddingBottom = 30
@@ -292,40 +277,26 @@ function SpendingChart({ data }: { data: Array<{ month: string; spent: number; t
 
   return (
     <div>
-      <svg width="100%" height={height} viewBox="0 0 580 200" style={{ display: 'block' }} aria-label="Real spending and estimated cost by month">
+      <svg width="100%" height={height} viewBox="0 0 580 200" style={{ display: 'block' }} aria-label="Cost by month">
         <defs>
           <linearGradient id="spentGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.8} />
             <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.2} />
           </linearGradient>
-          <linearGradient id="estimatedGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.6} />
-            <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.1} />
-          </linearGradient>
         </defs>
         {data.map((d, i) => {
           const x = i * (barWidth + gap) + 40
-          const spentHeight = (d.spent / maxSpent) * chartHeight
-          const estimatedHeight = (d.estimated / maxSpent) * chartHeight
-          const y = height - paddingBottom - spentHeight
-          const estimatedY = height - paddingBottom - estimatedHeight
+          const totalCost = d.spent + d.estimated
+          const costHeight = (totalCost / maxSpent) * chartHeight
+          const y = height - paddingBottom - costHeight
 
           return (
             <g key={d.month}>
               <rect
-                x={x + barWidth / 2}
-                y={estimatedY}
-                width={barWidth / 2 - 2}
-                height={estimatedHeight}
-                fill="url(#estimatedGradient)"
-                rx={4}
-                style={{ pointerEvents: 'none' }}
-              />
-              <rect
-                x={x}
+                x={x + barWidth / 4}
                 y={y}
-                width={barWidth / 2 - 2}
-                height={spentHeight}
+                width={barWidth / 2}
+                height={costHeight}
                 fill="url(#spentGradient)"
                 rx={4}
               />
@@ -351,11 +322,7 @@ function SpendingChart({ data }: { data: Array<{ month: string; spent: number; t
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--fg-muted)' }}>
           <div style={{ width: 12, height: 12, background: 'var(--accent)', borderRadius: 2 }} />
-          <span>Real Cost</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--fg-muted)' }}>
-          <div style={{ width: 12, height: 12, background: '#60a5fa', borderRadius: 2 }} />
-          <span>Estimated</span>
+          <span>Cost</span>
         </div>
       </div>
     </div>
@@ -368,7 +335,7 @@ function ToolBreakdown({ tools, metric }: { tools: ToolUsage[]; metric: TokenMet
   return (
     <div className="table-scroll" role="region" aria-label="Exact tool token counts" tabIndex={0}>
       <table className="stats-table">
-        <thead><tr><th scope="col">Tool</th>{columns.map(column => <th key={column.id} scope="col" className={column.id === metric ? 'selected-metric' : ''}>{column.label} tokens</th>)}<th scope="col">Estimated cost</th></tr></thead>
+        <thead><tr><th scope="col">Tool</th>{columns.map(column => <th key={column.id} scope="col" className={column.id === metric ? 'selected-metric' : ''}>{column.label} tokens</th>)}<th scope="col">Cost</th></tr></thead>
         <tbody>{tools.map(tool => <tr key={tool.name}>
           <th scope="row" style={{ color: tool.color, whiteSpace: 'nowrap' }}>{tool.name}</th>
           {columns.map(column => <td key={column.id} className={column.id === metric ? 'selected-metric' : ''}>{formatTokenCount(tokenValue(tool.tokenTotals, column.id))}</td>)}

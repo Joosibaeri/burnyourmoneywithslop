@@ -285,7 +285,7 @@ function SubscriptionSettings({
             <div>
               <CardTitle>Subscription Management</CardTitle>
               <CardDescription>
-                Track your actual monthly spending. One subscription shared across tools counts only once.
+                Track your subscription prices. A subscription shared across tools counts only once toward cost.
               </CardDescription>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -295,7 +295,7 @@ function SubscriptionSettings({
           </div>
         </CardHeader>
         <CardContent>
-          <p style={{ color: 'var(--fg-muted)', marginBottom: 20 }}>Selections and invoice-price edits apply to the current UTC calendar month. Older months are retained. The prices below are not spending until relevant usage is recorded.</p>
+          <p style={{ color: 'var(--fg-muted)', marginBottom: 20 }}>Selections and invoice-price edits apply to the current UTC calendar month. Older months are retained. The prices below are not included in cost until relevant usage is recorded.</p>
           <section aria-label="Custom subscriptions" style={{ marginBottom: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
               <h3>Custom subscriptions</h3>
@@ -464,7 +464,7 @@ function SubscriptionSettings({
                 <li>Subscriptions are counted once per calendar month containing recorded usage</li>
                 <li>One subscription shared across tools (e.g., ChatGPT via Codex + OpenCode) counts only once</li>
                 <li>Custom prices let you enter your actual invoice amount (taxes, discounts, etc.)</li>
-                <li>Model-cost estimates remain separate from real subscription spending</li>
+                <li>Per-request costs and selected subscription prices are combined in your cost totals</li>
                 <li>Stop Tracking ends future counting; it does not cancel your provider’s subscription</li>
               </ul>
             </div>

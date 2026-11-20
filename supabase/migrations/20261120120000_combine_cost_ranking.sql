@@ -1,0 +1,70 @@
+-- Cost is the single public ranking metric: recorded subscription/invoice
+-- spending plus reported/list-price per-request model costs. Recorded spending
+-- repeats across tools, so count it once per user/month before combining.
+create or replace function public.get_global_ranking(
+  p_month date default (now() at time zone 'UTC')::date,
+  p_metric text default 'total', p_limit integer default 50, p_offset integer default 0
+)
+returns table (
+  user_id uuid, github_login text, display_name text, avatar_url text,
+  real_cost_usd numeric, total_estimated_cost numeric, unknown_cost_events bigint,
+  input_tokens text, output_tokens text, reasoning_tokens text,
+  cache_read_tokens text, cache_write_tokens text, total_tokens_exact text,
+  rank bigint, total_members bigint
+) language plpgsql stable security invoker set search_path = '' as $$
+begin
+  if p_metric is null or p_metric not in ('cost', 'input', 'output', 'input_output', 'total', 'cached', 'cache_read', 'cache_write', 'reasoning') then
+    raise exception 'Invalid ranking metric' using errcode = '22023';
+  end if;
+  if p_limit is null or p_limit < 1 or p_limit > 100 or p_offset is null or p_offset < 0 or p_offset > 1000000 then
+    raise exception 'Invalid ranking page' using errcode = '22023';
+  end if;
+
+  return query
+  with visible_usage as (
+    select s.* from public.monthly_usage_summary s
+    join public.profiles p on p.id = s.user_id and p.stats_public
+    where p_month is null or s.month = date_trunc('month', p_month::timestamp) at time zone 'UTC'
+  ), monthly_costs as (
+    select s.user_id, s.month, max(s.real_cost_usd) as spent
+    from visible_usage s group by s.user_id, s.month
+  ), costs as (
+    select c.user_id, sum(c.spent) as spent from monthly_costs c group by c.user_id
+  ), tokens as (
+    select s.user_id,
+      sum(s.input_tokens::numeric) as input, sum(s.output_tokens::numeric) as output,
+      sum(s.reasoning_tokens::numeric) as reasoning,
+      sum(s.cache_read_tokens::numeric) as cache_read, sum(s.cache_write_tokens::numeric) as cache_write,
+      sum(s.total_estimated_cost) as estimated, sum(s.unknown_cost_events)::bigint as unknown_costs
+    from visible_usage s group by s.user_id
+  ), totals as (
+    select p.id, p.github_login, p.display_name, p.avatar_url, c.spent, t.*,
+      case p_metric
+        when 'cost' then c.spent + t.estimated
+        when 'input' then t.input
+        when 'output' then t.output + t.reasoning
+        when 'input_output' then t.input + t.output + t.reasoning
+        when 'cached' then t.cache_read + t.cache_write
+        when 'cache_read' then t.cache_read
+        when 'cache_write' then t.cache_write
+        when 'reasoning' then t.reasoning
+        else t.input + t.output + t.reasoning + t.cache_read + t.cache_write
+      end as metric_value
+    from tokens t join costs c on c.user_id = t.user_id
+    join public.profiles p on p.id = t.user_id and p.stats_public
+  ), ranked as (
+    select t.*, rank() over (order by t.metric_value desc) as position,
+      count(*) over () as member_count from totals t
+  )
+  select r.id, r.github_login, r.display_name, r.avatar_url, r.spent, r.estimated, r.unknown_costs,
+    r.input::text, r.output::text, r.reasoning::text, r.cache_read::text, r.cache_write::text,
+    (r.input + r.output + r.reasoning + r.cache_read + r.cache_write)::text,
+    r.position, r.member_count
+  from ranked r order by r.position, r.github_login nulls last, r.id
+  limit p_limit offset p_offset;
+end;
+$$;
+
+-- CREATE OR REPLACE preserves the existing restricted EXECUTE grants.
+comment on function public.get_global_ranking(date, text, integer, integer) is
+  'Public-statistics users with recorded usage only. Null month means all time. Cost ranks the sum of recorded subscription/invoice spending and available per-request model costs; unavailable pricing is not free. Token categories preserve reported uncached input, cached reads/writes, output and reasoning. No prompt-only estimation, raw events or billing records.';

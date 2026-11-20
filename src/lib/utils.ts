@@ -101,7 +101,10 @@ export function getMockGroups() {
         { id: '6', name: 'casey', login: 'caseydev', avatar: '', spent: 138, tokens: 29_200_000, tools: ['Claude Code'] },
       ],
     },
-  ].map(group => ({ ...group, members: group.members.map(member => ({ ...member, tokenTotals: demoTokenTotals(member.tokens), estimated: member.spent * 0.6, unknownCostEvents: 0 })) }))
+  ].map(group => {
+    const members = group.members.map(member => ({ ...member, tokenTotals: demoTokenTotals(member.tokens), estimated: member.spent * 0.6, unknownCostEvents: 0 }))
+    return { ...group, totalSpent: members.reduce((sum, member) => sum + member.spent + member.estimated, 0), members }
+  })
 }
 
 export function getSubscriptionCatalog() {

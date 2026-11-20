@@ -1,6 +1,6 @@
 # Burn Your Money With Slop
 
-Compare AI coding tokens and recorded subscription spending with friends. Public GitHub identities and statistics, consent-based private groups, and metrics-only collectors.
+Compare AI coding tokens and costs with friends. Public GitHub identities and statistics, consent-based private groups, and metrics-only collectors.
 
 [![Deploy](https://github.com/Joosibaeri/burnyourmoneywithslop/actions/workflows/deploy.yml/badge.svg)](https://github.com/Joosibaeri/burnyourmoneywithslop/actions/workflows/deploy.yml)
 
@@ -76,14 +76,14 @@ Failed uploads stay in a private, account-scoped local queue. Logging into anoth
 
 The Session panel's expiry is the short-lived **Supabase access token**, not the GitHub OAuth app secret. The website persists its session and refreshes it while active/on return; collectors independently refresh their private session before uploading. If a refresh session is revoked, expires under configured inactivity/time limits, or credentials are removed, sign in again. Pending collector metrics are retained. `status --refresh` verifies renewal without displaying tokens.
 
-## Spending model
+## Cost model
 
-- **Real spending** is your recorded subscription/invoice price, not an inferred API bill. You select the paid plans and may override their prices, including tax, discounts, additional charges, or your share of a team invoice.
+- **Cost** combines available per-request model costs with your recorded subscription/invoice prices. You select the paid plans and may override their prices, including tax, discounts, additional charges, or your share of a team invoice.
 - A subscription shared across tools counts **once per user per UTC calendar month with relevant recorded usage**. Group totals sum each member independently.
 - Custom plans have their own stable identities and follow the same rules. Two distinct custom subscriptions may share a name; each counts separately. Avoid tracking the same invoice through both a catalogue entry and a custom plan.
 - Selections and price edits apply to the **current UTC calendar month**. Older subscription records are retained. Stopping tracking does not cancel a provider subscription.
 - Catalogue prices are monthly USD prices; use a monthly-equivalent amount for annual plans. For shared team invoices, record your share—not the full invoice on every member's account.
-- **Model estimates** remain separate. OpenCode/Cursor reported model costs and Claude/Codex standard token-price estimates are not actual invoice charges. Unknown models and hidden Cursor costs are marked unavailable, and the UI labels estimates as partial.
+- Per-request costs use provider-reported costs where available and standard token-price estimates for supported Claude/Codex models. These may differ from actual invoices. Unknown models and hidden Cursor costs are marked unavailable, and totals with missing pricing are marked partial.
 - Speed/residency premiums, discounts, tools, prepaid top-ups and API charges are not automatically reconciled. Add actual billed amounts through your invoice-price override if appropriate. This is a self-reported comparison dashboard, not a financial statement.
 
 The catalogue includes Claude Pro/Max, ChatGPT allowance tiers, current and legacy Cursor plans, and OpenCode's free client, Go, Go Plus and Go Teams. A free client does **not** mean its paid API usage is free. Prices were checked on **2026-11-18**; provider limits and prices can change.
@@ -96,7 +96,7 @@ The catalogue includes Claude Pro/Max, ChatGPT allowance tiers, current and lega
 - **Out** = output including separately reported reasoning. **In + Out** excludes cache. **Cached + In + Out** includes every category exactly once. Cache-read, cache-write and reasoning counts are also available separately as breakdowns, not extra totals.
 - Counters come from full request usage, not from measuring prompt/tool text. Providers can report system/tool context as cached; those tokens stay in Cached regardless of their source. Stored counters and ranking definitions remain disjoint: `input_tokens` excludes both cache types and `output_tokens` excludes separately reported reasoning. No contents are read or re-uploaded to reconstruct missing categories.
 - Counts reflect recorded provider counters, not reconstructed missing usage. Aggregate counters travel as decimal strings and are summed as integers, so large totals remain exact beyond JavaScript's safe-number limit.
-- Group leaderboards and monthly trends can compare each token category, real spending or model estimates. Choose a UTC month or **All time**; tied values share a rank.
+- Group leaderboards and monthly trends can compare total cost or each token category. Choose a UTC month or **All time**; tied values share a rank.
 - [Global Ranking](https://howmuchmoneydidyoualreadyburnedwithslop.joosibaeri.xyz/ranking) is public without sign-in and includes only users with public statistics and recorded usage in the selected period. Private statistics never appear there, including for their owner or shared-group friends. Ranking happens before pagination.
 
 ## Privacy and groups

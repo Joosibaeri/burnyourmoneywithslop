@@ -30,11 +30,11 @@ describe('group metric rankings', () => {
     expect(rankMembers(tied, 'total').map(member => [member.id, member.rank])).toEqual([['a', 1], ['b', 1], ['c', 3]])
     expect(tied.map(member => member.id)).toEqual(['b', 'a', 'c'])
   })
-  it('compares real spending and estimates separately', () => {
+  it('ranks and formats combined cost as one metric', () => {
     const costs = [{ ...members[0], spent: 25, estimated: 2 }, { ...members[1], spent: 10, estimated: 99 }]
-    expect(rankMembers(costs, 'spent')[0].id).toBe('dan')
-    expect(rankMembers(costs, 'estimated')[0].id).toBe('erin')
-    expect(formatComparisonValue(costs[0], 'spent')).toBe('$25.00')
+    expect(rankMembers(costs, 'cost')[0].id).toBe('erin')
+    expect(formatComparisonValue(costs[0], 'cost')).toBe('$27.00')
+    expect(comparisonLabel('cost')).toBe('Cost')
     expect(comparisonLabel('output')).toBe('Out tokens')
   })
   it('sums members without coercing their exact token counters to numbers', () => {
@@ -46,7 +46,7 @@ describe('group metric rankings', () => {
   })
   it('does not create different ranks for equivalent recorded invoice totals', () => {
     const summed = sumComparisonStats([{ ...members[0], spent: 0.1 }, { ...members[1], spent: 0.2 }])
-    const ranking = rankMembers([{ ...members[0], spent: 0.3 }, { ...members[1], spent: summed.spent }], 'spent')
+    const ranking = rankMembers([{ ...members[0], spent: 0.3 }, { ...members[1], spent: summed.spent }], 'cost')
     expect(summed.spent).toBe(0.3)
     expect(ranking.map(member => member.rank)).toEqual([1, 1])
   })

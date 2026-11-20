@@ -97,7 +97,7 @@ export function Login() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
             <FeatureIcon icon={Shield} label="Private Groups" />
             <FeatureIcon icon={BarChart2} label="Usage Charts" />
-            <FeatureIcon icon={DollarSign} label="Real Costs" />
+            <FeatureIcon icon={DollarSign} label="Costs" />
           </div>
         </div>
 

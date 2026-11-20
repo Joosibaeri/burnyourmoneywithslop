@@ -10,6 +10,7 @@ describe('UTC usage and shared billing aggregation', () => {
     expect(summary.totalSpent).toBe(50)
     expect(summary.totalTokens).toBe(300)
     expect(summary.totalEstimated).toBe(3)
+    expect(summary.toolBreakdown.reduce((sum, tool) => sum + tool.cost, 0)).toBeCloseTo(53)
     expect(summary.unknownCostEvents).toBe(3)
   })
   it('does not carry a previous month’s spending into an empty current month', () => {
@@ -76,8 +77,8 @@ describe('global ranking transport', () => {
   })
   it('requests all time explicitly without sending a caller/group visibility override', async () => {
     const rpc = vi.fn().mockResolvedValue({ data: [], error: null })
-    expect(await loadGlobalRanking({ rpc } as unknown as SupabaseClient, 'all', 'spent')).toEqual({ members: [], totalMembers: 0 })
-    expect(rpc).toHaveBeenCalledWith('get_global_ranking', { p_month: null, p_metric: 'spent', p_limit: 50, p_offset: 0 })
+    expect(await loadGlobalRanking({ rpc } as unknown as SupabaseClient, 'all', 'cost')).toEqual({ members: [], totalMembers: 0 })
+    expect(rpc).toHaveBeenCalledWith('get_global_ranking', { p_month: null, p_metric: 'cost', p_limit: 50, p_offset: 0 })
   })
   it('propagates ranking failures instead of presenting them as an empty ranking', async () => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: 'Ranking unavailable' } })

@@ -143,7 +143,7 @@ npm run cursor:import -- --file billing-items.json --user-id user_YOUR_ID
 
 The importer independently filters to your user principal and excludes other users/principals, credit/adjustment items, non-Cursor products, non-token meters, and product-ambiguous data before 2026-07-19. Only stable `billingItemId` hashes and whitelisted metrics/models/timestamps leave the machine. Re-importing overlapping exports is deduplicated. Ordinary personal dashboard CSVs, filtered-usage events and guessed transcript fields are **not supported**.
 
-Costs are decimal **USD**, not cents. Included/credit items may conceal costs as zero without a visibility marker; these are marked unavailable, not free. Reported costs remain model estimates, not reconciled invoices or prepaid top-up spending.
+Costs are decimal **USD**, not cents. Included/credit items may conceal costs as zero without a visibility marker; these are marked unavailable, not free. Reported costs are per-request usage costs, not reconciled invoices or prepaid top-up spending.
 
 ## 3. Automatic uploads after login/reboot (Linux)
 

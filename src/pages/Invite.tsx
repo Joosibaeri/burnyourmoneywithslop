@@ -44,7 +44,7 @@ export function Invite() {
           <CardDescription>You’ve been invited to compare AI usage with friends.</CardDescription>
         </CardHeader>
         <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <p>Joining lets group members see your token totals, estimated costs, and real subscription spending—even when your statistics are private. Prompts, code, transcripts, and receipts remain private.</p>
+          <p>Joining lets group members see your token totals and costs—even when your statistics are private. Prompts, code, transcripts, and receipts remain private.</p>
           <p style={{ color: 'var(--fg-muted)' }}>Only join if you trust the person who shared this link. You can leave the group later.</p>
           {error && <p role="alert" style={{ color: 'var(--danger)' }}>{error}</p>}
           {loading ? <p>Checking sign-in…</p> : user ? (

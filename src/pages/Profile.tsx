@@ -22,7 +22,7 @@ export function Profile({ username }: { username: string }) {
       const monthly = getMockMonthlyData()
       return {
         profile: { id: member?.id ?? 'demo', github_login: username, display_name: member?.name === 'you' ? 'Demo User' : member?.name ?? username, avatar_url: member?.avatar ?? '', stats_public: true, created_at: null } as ProfileRecord,
-        stats: { totalSpent: monthly.reduce((sum, month) => sum + month.spent, 0), totalTokens: monthly.reduce((sum, month) => sum + month.tokens, 0), totalEstimated: monthly.reduce((sum, month) => sum + month.estimated, 0), unknownCostEvents: 0, toolBreakdown: getMockStats().toolBreakdown.map(tool => ({ ...tool, unknownCostEvents: 0 })), monthlyData: monthly },
+        stats: { totalSpent: monthly.reduce((sum, month) => sum + month.spent + month.estimated, 0), totalTokens: monthly.reduce((sum, month) => sum + month.tokens, 0), totalEstimated: 0, unknownCostEvents: 0, toolBreakdown: getMockStats().toolBreakdown.map(tool => ({ ...tool, unknownCostEvents: 0 })), monthlyData: monthly },
         groups: demoGroups.filter(group => group.members.some(member => member.login.toLowerCase() === username.toLowerCase())), monthlyData: monthly,
       }
     }
@@ -68,7 +68,7 @@ export function Profile({ username }: { username: string }) {
   const githubLogin = profile.github_login || username
   const githubName = profile.display_name || githubLogin
   const avatarUrl = profile.avatar_url || `https://github.com/${githubLogin}.png`
-  const totalSpent = stats?.totalSpent || 0
+  const totalCost = (stats?.totalSpent ?? 0) + (stats?.totalEstimated ?? 0)
   const totalTokens = stats?.totalTokens || 0
   const statsVisible = profile.stats_public || isOwnProfile || !!currentUser && groups.some(group => group.members.some(member => member.id === currentUser.id))
 
@@ -126,12 +126,11 @@ export function Profile({ username }: { username: string }) {
               <CardTitle>Quick Stats</CardTitle>
             </CardHeader>
             <CardContent style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <StatItem icon={DollarSign} label="Real Spending (all time)" value={statsVisible ? formatCurrency(totalSpent) : 'Private'} color="var(--accent)" />
+              <StatItem icon={DollarSign} label="Cost" value={statsVisible ? formatCurrency(totalCost) : 'Private'} color="var(--accent)" />
               <StatItem icon={Activity} label="Total Tokens" value={statsVisible ? formatNumber(totalTokens) : 'Private'} color="#60a5fa" />
-              <StatItem icon={DollarSign} label="Estimated Model Cost" value={statsVisible ? formatCurrency(stats?.totalEstimated ?? 0) : 'Private'} color="#60a5fa" />
               <StatItem icon={Users} label={isOwnProfile ? 'Groups' : 'Shared Groups'} value={String(groups.length)} color="#22c55e" />
               <StatItem icon={Calendar} label="Member Since" value={profile.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown'} color="#c084fc" />
-              {statsVisible && !!stats?.unknownCostEvents && <p style={{ fontSize: '0.8125rem', color: 'var(--fg-muted)' }}>{stats.unknownCostEvents} requests have unavailable cost. Estimates are partial, not invoice charges.</p>}
+              {statsVisible && !!stats?.unknownCostEvents && <p style={{ fontSize: '0.8125rem', color: 'var(--fg-muted)' }}>{stats.unknownCostEvents} requests have unavailable pricing; displayed cost is partial.</p>}
             </CardContent>
           </Card>
 
@@ -158,20 +157,20 @@ export function Profile({ username }: { username: string }) {
             <CardHeader>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <CardTitle>Monthly Spending</CardTitle>
-                  <CardDescription>Real subscription costs and model estimates shown separately</CardDescription>
+                  <CardTitle>Monthly Cost</CardTitle>
+                  <CardDescription>Combined usage and subscription costs by month</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              {statsVisible ? <ProfileSpendingChart data={monthlyData} /> : <p>Statistics are private. Join a group together to compare usage.</p>}
+              {statsVisible ? <ProfileCostChart data={monthlyData} /> : <p>Statistics are private. Join a group together to compare usage.</p>}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>Tool Breakdown</CardTitle>
-              <CardDescription>Tokens and estimated costs per tool</CardDescription>
+              <CardTitle>Tools</CardTitle>
+              <CardDescription>Tokens and costs per tool; subscription cost is split evenly across tools</CardDescription>
             </CardHeader>
             <CardContent>
               {statsVisible ? <ProfileToolBreakdown tools={stats?.toolBreakdown ?? []} /> : <p>Statistics are private.</p>}
@@ -218,7 +217,7 @@ export function Profile({ username }: { username: string }) {
                         <p style={{ color: 'var(--fg-muted)', fontSize: '0.8125rem', marginBottom: 12 }}>{group.description}</p>
                         <div style={{ display: 'flex', gap: 16, fontSize: '0.75rem', color: 'var(--fg-subtle)' }}>
                           <span><Users size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} /> {group.memberCount} members</span>
-                          <span><DollarSign size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} /> {formatCurrency(group.totalSpent)} this month</span>
+                          <span><DollarSign size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} /> {formatCurrency(group.totalSpent)} cost this month</span>
                         </div>
                       </div>
                     </Link>
@@ -264,9 +263,9 @@ function StatItem({ icon: Icon, label, value, color }: { icon: React.ComponentTy
   )
 }
 
-function ProfileSpendingChart({ data }: { data: Array<{ month: string; spent: number; tokens: number; estimated: number }> }) {
+function ProfileCostChart({ data }: { data: Array<{ month: string; spent: number; tokens: number; estimated: number }> }) {
   if (!data.length) return <p style={{ color: 'var(--fg-muted)' }}>No usage recorded yet.</p>
-  const maxSpent = Math.max(...data.flatMap(d => [d.spent, d.estimated]), 1)
+  const maxSpent = Math.max(...data.map(d => d.spent + d.estimated), 1)
   const height = 200
   const paddingTop = 20
   const paddingBottom = 30
@@ -276,39 +275,25 @@ function ProfileSpendingChart({ data }: { data: Array<{ month: string; spent: nu
 
   return (
     <div>
-      <svg width="100%" height={height} viewBox="0 0 580 200" style={{ display: 'block' }} aria-label="Real spending and estimated cost by month">
+      <svg width="100%" height={height} viewBox="0 0 580 200" style={{ display: 'block' }} aria-label="Cost by month">
         <defs>
           <linearGradient id="spentGradient" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.8} />
             <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.2} />
           </linearGradient>
-          <linearGradient id="estimatedGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.6} />
-            <stop offset="100%" stopColor="#60a5fa" stopOpacity={0.1} />
-          </linearGradient>
         </defs>
         {data.map((d, i) => {
           const x = i * (barWidth + gap) + 40
-          const spentHeight = (d.spent / maxSpent) * chartHeight
-          const estimatedHeight = (d.estimated / maxSpent) * chartHeight
-          const y = height - paddingBottom - spentHeight
-          const estimatedY = height - paddingBottom - estimatedHeight
+          const costHeight = ((d.spent + d.estimated) / maxSpent) * chartHeight
+          const y = height - paddingBottom - costHeight
 
           return (
             <g key={d.month}>
               <rect
-                x={x + barWidth / 2}
-                y={estimatedY}
-                width={barWidth / 2 - 2}
-                height={estimatedHeight}
-                fill="url(#estimatedGradient)"
-                rx={4}
-              />
-              <rect
-                x={x}
+                x={x + barWidth / 4}
                 y={y}
-                width={barWidth / 2 - 2}
-                height={spentHeight}
+                width={barWidth / 2}
+                height={costHeight}
                 fill="url(#spentGradient)"
                 rx={4}
               />
@@ -334,11 +319,7 @@ function ProfileSpendingChart({ data }: { data: Array<{ month: string; spent: nu
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--fg-muted)' }}>
           <div style={{ width: 12, height: 12, background: 'var(--accent)', borderRadius: 2 }} />
-          <span>Real Cost</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', color: 'var(--fg-muted)' }}>
-          <div style={{ width: 12, height: 12, background: '#60a5fa', borderRadius: 2 }} />
-          <span>Estimated</span>
+          <span>Cost</span>
         </div>
       </div>
     </div>
