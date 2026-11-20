@@ -10,7 +10,9 @@ import { useSearchParams } from 'react-router-dom'
 import type { Session, User } from '@supabase/supabase-js'
 import { SUBSCRIPTION_CATALOG, calculateMonthlySubscriptionCost, formatCurrencyPrecise as fmtCurrency } from '@/lib/utils'
 import { githubLogin as getGithubLogin, loadCustomSubscriptions, loadSubscriptions, saveCustomSubscription, saveSubscription, subscriptionTools, TOOLS, type CustomSubscriptionRecord, type CustomSubscriptionSelection, type SubscriptionSelection } from '@/lib/data'
-import { COLLECTORS, COLLECTOR_QUICKSTART } from '@/lib/collectors'
+import { COLLECTORS } from '@/lib/collectors'
+import ReactMarkdown from 'react-markdown'
+import pluginInstallGuide from '../../docs/PLUGIN_INSTALL.md?raw'
 
 const SETTINGS_TABS = [
   { id: 'account', label: 'Account', icon: GitBranch },
@@ -478,13 +480,17 @@ function PluginSettings() {
 
   return (
     <div>
-      <Card style={{ marginBottom: 24 }}><CardHeader><CardTitle>Sign in once per machine</CardTitle><CardDescription>Use Node.js 22 or newer. Run the commands below from your clone.</CardDescription></CardHeader><CardContent>
-        <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', marginBottom: 16 }}>{COLLECTOR_QUICKSTART}</pre>
-        <p>Collector sign-in is separate from the website. Credentials are stored in a private local directory and refresh automatically. No OAuth secrets, prompts, code or transcripts belong in tool configuration.</p>
-        <p style={{ marginTop: 12 }}><code>npm run collector -- status</code> checks local sign-in; <code>npm run collector -- status --refresh</code> verifies token renewal. The installer preserves existing settings and creates private backups. Codex requires one-time hook review.</p>
-        <p style={{ marginTop: 12 }}><strong>Linux reboot/login autostart:</strong> after signing in, run <code>npm run collector -- autostart enable</code>. This installs a per-user systemd timer that retries private queued uploads every minute after login, including after reboot. It does not start the coding tools or create AI requests. <code>autostart status</code> verifies it; <code>autostart disable</code> turns it off.</p>
-        <p style={{ marginTop: 12 }}>Short-lived access tokens refresh automatically on upload. Revoked/expired refresh sessions require collector login again; pending metrics are retained. Cursor still needs an explicit billing export, not a guessed live hook.</p>
-        <a href="https://github.com/Joosibaeri/burnyourmoneywithslop/blob/master/docs/PLUGIN_INSTALL.md" target="_blank" rel="noopener noreferrer">Full installation and verification guide</a>
+      <Card style={{ marginBottom: 24 }}><CardContent>
+        <article className="markdown-content">
+          <ReactMarkdown components={{
+            a: ({ href, children }) => {
+              const destination = href && !href.startsWith('#') && !/^[a-z][a-z\d+.-]*:/i.test(href)
+                ? `https://github.com/Joosibaeri/burnyourmoneywithslop/blob/master/docs/${href}`
+                : href
+              return <a href={destination} target="_blank" rel="noopener noreferrer">{children}</a>
+            },
+          }}>{pluginInstallGuide}</ReactMarkdown>
+        </article>
       </CardContent></Card>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 20 }}>
       {plugins.map(plugin => (

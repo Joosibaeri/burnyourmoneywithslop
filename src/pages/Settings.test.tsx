@@ -35,7 +35,9 @@ describe('settings navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Subscriptions' }))
     expect(screen.getByText('Subscription Management')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Collectors' }))
-    expect(screen.getByText('Sign in once per machine')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Collector installation' })).toBeInTheDocument()
+    expect(screen.getByText('GET https://api.cursor.com/v2/teams/billing-items')).toBeInTheDocument()
+    expect(screen.getByText(/Automatic uploads after login\/reboot/)).toBeInTheDocument()
   })
 
   it('adds, edits and stops tracking a custom plan without restoring the Supabase tab', async () => {
